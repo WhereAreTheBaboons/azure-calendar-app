@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+     <!-- Updated title -->
+    <title>Interactive Calendar (Cloud - Firestore)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%); min-height: 100vh; overflow-x: hidden; }
+        
+        #main-content { margin: 24px; transition: margin-right 0.35s ease-in-out; }
+        #sidebar { 
+            position: fixed; 
+            top: 0; 
+            right: 0; 
+            width: 450px;
+            height: 100%; 
+            transform: translateX(100%); 
+            transition: transform 0.35s ease-in-out; 
+            z-index: 200; 
+            border-radius: 0; 
+            border-left: 1px solid #e5e7eb; 
+            padding: 0; 
+        }
+        #sidebarToggle { position: fixed; top: 24px; right: 24px; z-index: 201; transition: right 0.35s ease-in-out; }
+        body.sidebar-open #main-content { margin-right: calc(450px + 24px); }
+        body.sidebar-open #sidebar { transform: translateX(0); }
+        body.sidebar-open #sidebarToggle { right: calc(450px + 24px); }
+
+        #months-display-control input[type="number"] { -moz-appearance: textfield; appearance: textfield; text-align: center; font-weight: 600; }
+        #months-display-control input[type="number"]::-webkit-outer-spin-button, #months-display-control input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        #dataMenu { display: none; }
+        #dataMenu.menu-open { display: block; }
+        
+        #templateDropdownContainer { position: relative; }
+        #templateSelect { opacity: 0; position: absolute; top: 0; left: 0; right: 0; bottom: 0; cursor: pointer; }
+        .color-swatch { width: 28px; height: 28px; border-radius: 9999px; cursor: pointer; border: 2px solid transparent; transition: all 0.15s ease; }
+        .color-swatch.selected { border-color: #4f46e5; transform: scale(1.15); box-shadow: 0 0 0 2px white; }
+        #durationDisplay.editable:hover { background-color: #f0f4f8; cursor: pointer; }
+        #durationInput { display: none; }
+        .notes-history-view { max-height: 150px; overflow-y: auto; }
+
+        #agendaViewContent { --hour-height: 50px; }
+        #agendaTimelineContainer { height: calc(var(--hour-height) * 24); }
+        .hour-marker { height: var(--hour-height); }
+        .agenda-event-bar { position: absolute; min-height: 25px; }
+		#agendaViewContent {
+			-ms-overflow-style: none;  /* IE and Edge */
+			scrollbar-width: none;  /* Firefox */
+		}
+		#agendaViewContent::-webkit-scrollbar {
+			display: none; /* Chrome, Safari, and Opera */
+		}
+        
+        .preset-tag-chip {
+            background-color: #eef2ff; /* indigo-50 */
+            color: #4338ca; /* indigo-700 */
+            border: 1px solid #c7d2fe; /* indigo-200 */
+        }
+        .preset-tag-chip.active {
+            background-color: #4f46e5; /* indigo-600 */
+            color: white;
+            border-color: #4f46e5; /* indigo-600 */
+        }
+
+
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,.05), 0 10px 15px rgba(0,0,0,.05); padding: 24px; }
+        .day-cell { min-height: 100px; padding: 8px; transition: background-color 0.1s; border-radius: 0.75rem; display:flex; flex-direction: column; position: relative;}
+		#dayCellsContainer { position: relative; z-index: 1; }
+		#continuousEventsContainer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+		.day-cell.drag-over { outline: 2px dashed #60a5fa; outline-offset: -4px; }
+		.resize-handle { position: absolute; top: 0; bottom: 0; width: 6px; cursor: ew-resize; background-color: rgba(0,0,0,0.2); transition: background-color 0.15s ease; z-index: 5; }
+		.day-cell.preview-active::before { content: ""; position: absolute; top: 4px; left: 4px; right: 4px; bottom: 4px; border-radius: 6px; background-color: rgba(59, 130, 246, 0.25); pointer-events: none; z-index: 2; }
+		.resize-handle:hover { background-color: rgba(0,0,0,0.35); z-index: 7; }
+		.day-cell.resizing-hover { outline: 2px dashed #f59e0b; outline-offset: -3px; }
+		.left-handle { left: 0; border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+		.right-handle { right: 0; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+        .day-cell:hover:not(.highlighted-day) { background-color: #f3f4f6; }
+        .today { background-color: #e0f2fe !important; }
+        .highlighted-day { background-color: #fce7f6 !important; border: 2px solid #db2777; padding: 6px; }
+        
+        .event-bar { border-radius: 4px; padding: 2px 4px; font-size: 0.75rem; line-height: 1; margin-bottom: 2px; /* color: white; */ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: transform 0.1s; position: relative; height: auto; min-height: 20px; display: flex; align-items: center; justify-content: center; }
+        .event-bar:hover { transform: scale(1.02); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .continuous-event { position: absolute; height: auto; min-height: 20px; display: flex; align-items: center; justify-content: center; margin-top: 8px; z-index: 6; }
+        
+        .modal { background-color: rgba(0,0,0,0.5); transition: opacity 0.3s ease-in-out; z-index: 100; }
+        .modal-content { transform: translateY(-50px); transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out; z-index: 101; }
+        .modal.open .modal-content { transform: translateY(0); }
+        .modal.closed { opacity: 0; pointer-events: none; }
+        .modal.closed .modal-content { transform: translateY(-50px); }
+        #messageBox { right: 16px; bottom: 16px; z-index: 1000; transition: all 0.3s ease-in-out; z-index: 102;}
+        .tag-filter-btn.active { background-color: #4f46e5; color: white; font-weight: 600; }
+
+        .event-counter { position: absolute; top: 4px; right: 4px; font-size: 0.7rem; line-height: 1; font-weight: 600; padding: 3px 6px; border-radius: 9999px; transition: all 0.2s ease-in-out; cursor: pointer; min-width: 20px; text-align: center; z-index: 10; }
+        .event-counter.has-events { background-color: #e0e7ff; color: #4338ca; }
+        .event-counter.no-events { background-color: #f3f4f6; color: #9ca3af; }
+        .event-counter .counter-num { display: inline; transition: opacity 0.1s ease-out; }
+        .event-counter .counter-plus { display: none; font-weight: bold; }
+        .event-counter:hover .counter-num { display: none; }
+        .event-counter:hover .counter-plus { display: inline; }
+        .event-counter:hover { transform: scale(1.1); }
+        .event-counter.has-events:hover { background-color: #4f46e5; color: white; }
+        .event-counter.no-events:hover { background-color: #22c55e; color: white; }
+
+        /* Dark Mode Styles */
+        html.dark { color-scheme: dark; }
+        html.dark body { background: linear-gradient(135deg, #1f2937 0%, #111827 100%); }
+        html.dark .card, html.dark #sidebar, html.dark .modal-content, html.dark #confirmModal .modal-content, html.dark #duplicateModal .modal-content { background: #1f2937; border-color: #374151; }
+        html.dark #sidebar { border-left-color: #374151; }
+        html.dark .card { box-shadow: 0 4px 6px rgba(0,0,0,.25), 0 10px 15px rgba(0,0,0,.25); }
+        html.dark h2, html.dark h3, html.dark #currentMonthYear, html.dark label { color: #f9fafb; }
+        html.dark .text-gray-800, html.dark .text-gray-700 { color: #d1d5db; }
+        html.dark .text-gray-600, html.dark .text-gray-500 { color: #9ca3af; }
+        html.dark #prevMonthBtn:hover, html.dark #nextMonthBtn:hover, html.dark #dataMenuBtn:hover, html.dark #themeToggleBtn:hover { background-color: #374151; }
+        html.dark #sidebarToggle, html.dark button.bg-white { background-color: #1f2937; }
+        html.dark #todayBtn { background-color: #4b5563; color: #e5e7eb; }
+        html.dark #todayBtn:hover { background-color: #6b7280; }
+        html.dark .day-cell { background-color: #111827; border-color: #374151; }
+        html.dark .day-cell:hover:not(.highlighted-day) { background-color: #374151; }
+        html.dark .today { background-color: #164e63 !important; }
+        html.dark .highlighted-day { background-color: #581c87 !important; border-color: #a21caf; }
+        html.dark .day-cell.preview-active::before { background-color: rgba(59, 130, 246, 0.4); }
+        html.dark input, html.dark textarea, html.dark select, html.dark input[type="search"] { background-color: #374151; border-color: #4b5563; color: #f3f4f6; }
+        html.dark input::placeholder, html.dark textarea::placeholder { color: #9ca3af; }
+        html.dark .bg-gray-50 { background-color: #111827; }
+        html.dark .border-b, html.dark .border-t, html.dark .border { border-color: #374151; }
+        html.dark #dataMenu { background: #374151; border-color: #4b5563; }
+        html.dark #dataMenu button:hover { background: #4b5563; }
+        html.dark #eventListContainer > div { border-color: #374151; }
+        html.dark #eventListContainer > div:hover { background-color: #374151; }
+        html.dark #eventListContainer > div.border-pink-500 { background-color: #2e102b; border-color: #be185d; }
+        html.dark .tag-filter-btn, html.dark button.bg-gray-200 { background-color: #374151; color: #d1d5db; }
+        html.dark .tag-filter-btn:hover, html.dark button.bg-gray-200:hover { background-color: #4b5563; }
+        html.dark .tag-filter-btn.active { background-color: #4f46e5; color: white; }
+        html.dark .preset-tag-chip { background-color: #3730a3; color: #e0e7ff; border: 1px solid #4f46e5; }
+        html.dark .preset-tag-chip.active { background-color: #4f46e5; color: white; }
+        html.dark .custom-tag { background-color: #1e40af; color: #dbeafe; }
+        html.dark .custom-tag button { color: #93c5fd; }
+        html.dark .event-counter.has-events { background-color: #3730a3; color: #e0e7ff; }
+        html.dark .event-counter.has-events:hover { background-color: #4f46e5; color: white; }
+        html.dark .event-counter.no-events { background-color: #374151; color: #9ca3af; }
+        html.dark .event-counter.no-events:hover { background-color: #16a34a; color: white; }
+        html.dark .hour-marker { border-color: #374151; }
+        html.dark #agendaTimelineContainer .hour-marker span { background-color: #1f2937; }
+        html.dark #durationDisplay.editable:hover { background-color: #374151; }
+        html.dark .notes-history-view { background-color: #111827; border-color: #374151; color: #d1d5db; }
+        html.dark #templateDropdownContainer:hover { background-color: #374151; }
+        html.dark #copyEventIdBtn:hover { background-color: #4b5563; }
+    </style>
+</head>
+<body class="sidebar-open">
+    <!-- The HTML structure remains unchanged from your original file -->
+    <button id="sidebarToggle" class="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+        <svg id="sidebarToggleIconOpen" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
+        </svg>
+        <svg id="sidebarToggleIconClose" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+    </button>
+    
+    <main id="main-content" class="card p-4 md:p-6 lg:p-8">
+        <header class="flex justify-between items-center mb-6">
+            <div class="flex items-center space-x-2">
+                <button id="prevMonthBtn" class="p-2 rounded-full hover:bg-gray-100 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+                <button id="todayBtn" class="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-lg transition">Today</button>
+                <button id="nextMonthBtn" class="p-2 rounded-full hover:bg-gray-100 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                </button>
+            </div>
+            <h2 id="currentMonthYear" class="text-3xl font-bold text-gray-800 text-center">Calendar View</h2>
+        </header>
+        <div id="calendarContainer" class="space-y-8"></div>
+    </main>
+
+    <aside id="sidebar" class="bg-white flex flex-col shadow-2xl">
+        <div id="actionsView" class="flex flex-col flex-grow">
+            <div class="p-6 pb-4 border-b border-gray-200 flex-shrink-0 flex justify-between items-start">
+                <div class="flex items-center gap-4">
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800">Event Actions</h3>
+                        <!-- User ID display is updated by the new Firebase logic -->
+                        <p class="text-xs text-gray-500">User ID: <span id="currentUserId" class="font-mono text-indigo-600">connecting...</span></p>
+                    </div>
+                    <button id="themeToggleBtn" class="p-2 rounded-full hover:bg-gray-100 transition" title="Toggle theme">
+                        <svg id="themeIconLight" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        <svg id="themeIconDark" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="months-display-control" class="text-right">
+                    <p class="text-xs font-medium text-gray-500 mb-1">Months #</p>
+                    <div class="flex items-center">
+                        <div class="flex flex-col">
+                            <button id="monthsUp" class="p-1 text-gray-500 hover:text-gray-800"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" /></svg></button>
+                            <button id="monthsDown" class="p-1 text-gray-500 hover:text-gray-800"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg></button>
+                        </div>
+                        <input type="number" id="monthsCount" value="3" min="1" max="24" class="w-12 h-12 p-1 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition text-lg">
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 pt-4 flex-shrink-0">
+                <button id="addEventBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition shadow-md hover:shadow-lg">+ Add New Event</button>
+            </div>
+
+            <div class="px-6 pb-4 flex flex-col flex-grow min-h-0">
+                <h3 class="text-xl font-semibold text-gray-800 mb-3 flex-shrink-0">All Events</h3>
+                <div class="mb-2 flex-shrink-0">
+                    <input type="search" id="searchBar" placeholder="Search by name..." class="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition">
+                </div>
+                <div id="tagFilterContainer" class="flex flex-wrap gap-2 mb-4 flex-shrink-0"></div>
+                <div id="eventListContainer" class="flex-grow overflow-y-auto space-y-2 pr-2">
+                    <p id="loadingEvents" class="text-gray-500 text-sm italic">Connecting to datastore...</p>
+                </div>
+            </div>
+
+            <div class="p-6 pt-4 mt-auto border-t border-gray-200 flex-shrink-0 relative">
+                <button id="dataMenuBtn" class="w-full flex items-center justify-center text-gray-600 hover:bg-gray-100 p-2 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" /></svg>
+                    <span class="ml-2 text-sm font-medium">Data Management</span>
+                </button>
+                <div id="dataMenu" class="absolute bottom-full right-6 mb-2 w-56 bg-white rounded-lg shadow-xl border p-2 space-y-1">
+                    <h4 class="px-2 py-1 text-xs font-semibold text-gray-400 uppercase">Data Actions</h4>
+                    <button id="exportBtn" class="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-gray-100">Export All (JSON)</button>
+                    <button id="importBtn" class="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-gray-100">Import Events</button>
+                    <button id="importTemplatesBtn" class="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-gray-100">Import Templates</button>
+                    <div class="border-t my-1"></div>
+                    <button id="resetDataBtn" class="w-full text-left px-3 py-2 text-sm rounded-md text-red-600 hover:bg-red-50">Reset All Events</button>
+                    <input type="file" id="fileInput" accept=".json" class="hidden">
+                </div>
+            </div>
+        </div>
+        
+        <div id="agendaView" class="hidden flex flex-col flex-grow min-h-0">
+             <header class="p-4 border-b flex justify-between items-center flex-shrink-0">
+                <div>
+                    <button data-action="close-agenda-view" class="text-sm font-medium text-indigo-600 hover:underline">&larr; Back to Events List</button>
+                    <h3 id="agendaDateTitle" class="text-lg font-bold text-gray-800"></h3>
+                </div>
+            </header>
+            <div id="agendaViewContent" class="flex-grow overflow-y-auto p-4">
+                <div id="agendaTimelineContainer" class="relative"></div>
+            </div>
+        </div>
+    </aside>
+
+    <div id="eventModal" class="modal fixed inset-0 flex items-center justify-center p-4 closed">
+        <div class="modal-content bg-white w-full max-w-lg rounded-xl shadow-2xl overflow-hidden">
+            <form id="eventForm">
+                <div class="p-4 sm:p-6 border-b bg-gray-50 flex justify-between items-center">
+                    <div class="flex items-center gap-3">
+                        <h3 id="modalTitle" class="text-xl font-bold text-gray-800">Create Event</h3>
+                        <div id="templateDropdownContainer" class="h-8 w-8 rounded-full hover:bg-gray-200 flex items-center justify-center" title="Apply a template">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                            <select id="templateSelect" class="w-full h-full"><option value="">-- Apply Template --</option></select>
+                        </div>
+                    </div>
+                    <div id="eventIdDisplayContainer" class="text-xs text-gray-500 hidden items-center">
+                        <span id="eventIdText" class="font-mono bg-gray-200 p-1 rounded"></span>
+                        <button id="copyEventIdBtn" type="button" class="ml-1 p-1 hover:bg-gray-300 rounded" title="Copy Event ID">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-4 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                    <input type="hidden" id="eventId">
+                    <input type="hidden" id="eventColor" value="#4f46e5">
+
+                    <div>
+                        <label for="eventName" class="block text-sm font-medium text-gray-700 mb-1">Event Name</label>
+                        <input type="text" id="eventName" required class="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition">
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                            <label for="startDate" class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                            <input type="date" id="startDate" required class="w-full p-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label for="endDate" class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                            <input type="date" id="endDate" class="w-full p-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label for="startTime" class="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                            <input type="time" id="startTime" value="08:00" required class="w-full p-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between p-2 bg-gray-100 rounded-lg">
+                        <div class="flex items-center">
+                            <input type="checkbox" id="includeWeekends" class="form-checkbox h-4 w-4 text-indigo-600 rounded">
+                            <label for="includeWeekends" class="ml-2 text-sm text-gray-700 select-none">Include Weekends</label>
+                        </div>
+                        <div class="text-sm">
+                            <span class="text-gray-600">Duration:</span>
+                            <span id="durationDisplay" class="font-semibold text-indigo-600 p-1 rounded-md editable">0 days</span>
+                            <input type="number" id="durationInput" min="1" class="w-16 p-1 text-center border border-gray-300 rounded-md">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Color</label>
+                        <div id="color-selector" class="flex items-center gap-2"></div>
+                    </div>
+
+                    <div>
+						<div class="flex items-center justify-between mb-1">
+							<label for="msTeamsLink" class="block text-sm font-medium text-gray-700">MS Teams Link</label>
+							<a href="#" id="msTeamsLinkIcon" target="_blank" rel="noopener noreferrer" class="hidden text-indigo-600 hover:text-indigo-800" title="Open MS Teams Link">
+								<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+									<path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd"></path>
+								</svg>
+							</a>
+						</div>
+						<input type="url" id="msTeamsLink" placeholder="https://teams.microsoft.com/..." class="w-full p-2 border border-gray-300 rounded-lg">
+					</div>
+
+                    <div class="border-t pt-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="block text-sm font-medium text-gray-700">Tags</label>
+                            <div id="presetTagsContainer" class="flex items-center gap-2"></div>
+                        </div>
+                        <div id="customTagsContainer" class="flex flex-wrap gap-2 mb-2"></div>
+                        <div class="flex space-x-2">
+                            <input type="text" id="newTagInput" placeholder="Add new tag..." class="flex-grow p-2 border border-gray-300 rounded-lg text-sm">
+                            <button type="button" id="addTagBtn" class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold text-sm rounded-lg">Add</button>
+                        </div>
+                    </div>
+                    
+                    <div class="border-t pt-4">
+                        <div class="flex justify-between items-center mb-2">
+                             <label for="eventNotes" class="block text-sm font-medium text-gray-700">Notes</label>
+                             <div class="flex items-center gap-2">
+                                <button type="button" id="clearNotesHistoryBtn" title="Clear notes history" class="p-1.5 text-gray-400 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                                <select id="notesHistorySelect" class="text-sm border-gray-300 rounded-md shadow-sm w-[150px]">
+                                    <option value="">History</option>
+                                </select>
+                             </div>
+                        </div>
+                        <textarea id="eventNotes" rows="4" class="w-full p-2 border border-gray-300 rounded-lg"></textarea>
+                        <div id="notesHistoryView" class="hidden mt-2 p-2 bg-gray-50 border rounded-lg text-sm text-gray-600 whitespace-pre-wrap notes-history-view"></div>
+                    </div>
+                </div>
+                
+                <div class="p-4 bg-gray-50 border-t flex justify-between items-center">
+                    <button type="button" data-action="close-modal" class="px-4 py-2 text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition">Cancel</button>
+                    <div class="flex items-center gap-3">
+                         <button type="button" id="deleteEventButton" class="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition shadow-sm hidden">Delete Event</button>
+                         <button type="submit" id="saveEventButton" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition shadow-md">Save Event</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+	
+	<div id="confirmModal" class="modal fixed inset-0 flex items-center justify-center p-4 closed">
+		<div class="modal-content bg-white w-full max-w-md rounded-xl p-6 shadow-2xl">
+			<h3 id="confirmModalTitle" class="text-xl font-bold text-gray-800 mb-4">Confirm Action</h3>
+			<p id="confirmModalText" class="text-gray-600 mb-6">Are you sure?</p>
+			<div class="flex justify-end space-x-3">
+				<button type="button" data-action="close-modal" class="px-5 py-2.5 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition">Cancel</button>
+				<button id="confirmOkBtn" class="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition shadow-md">Confirm</button>
+			</div>
+		</div>
+	</div>
+
+    <div id="duplicateModal" class="modal fixed inset-0 flex items-center justify-center p-4 closed" style="z-index: 102;">
+        <div class="modal-content bg-white w-full max-w-md rounded-xl p-6 shadow-2xl">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Duplicate by ID</h3>
+            <p class="text-gray-600 mb-4 text-sm">Paste an event's unique ID to copy its formatting, notes, and other details (dates will not be copied).</p>
+            <div class="flex space-x-2">
+                <input type="text" id="duplicateIdInputModal" placeholder="Paste event ID..." class="flex-grow p-2 border border-gray-300 rounded-lg text-sm">
+                <button type="button" id="applyDuplicateBtnModal" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-lg">Apply</button>
+            </div>
+            <div class="flex justify-end mt-6">
+                <button type="button" data-action="close-duplicate-modal" class="px-5 py-2.5 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition text-sm">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="messageBox" class="fixed p-4 bg-indigo-600 text-white rounded-lg shadow-xl hidden">
+        <div id="messageText" class="font-medium"></div>
+        <div id="messageSubText" class="text-sm opacity-80 mt-1"></div>
+    </div>
+
+    <!-- 
+      START OF SCRIPT UPDATES
+      - Added Firebase SDK imports
+      - Removed IndexedDB logic
+      - Added Firebase initialization and auth
+      - Replaced all DB functions with Firestore functions (onSnapshot, setDoc, deleteDoc, etc.)
+      - Removed BroadcastChannel and localStorage sync logic
+    -->
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            signInWithCustomToken, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            getDoc, 
+            setDoc, 
+            deleteDoc, 
+            onSnapshot, 
+            collection, 
+            query, 
+            writeBatch,
+            getDocs,
+            setLogLevel
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- App Constants ---
+        const CALENDAR_CONSTANTS = { RENDER_DELAY: 50, BASE_CELL_HEIGHT: 80, EVENT_ROW_HEIGHT: 20, DATE_LABEL_HEIGHT: 25, EVENT_SLOT_HEIGHT: 24, EVENT_SIDE_MARGINS: 5 };
+        const PRESET_COLORS = ["#4f46e5", "#db2777", "#16a34a", "#f97316", "#ca8a04", "#6b7280"];
+        const PRESET_TAGS = ["one", "two", "three"];
+
+        // --- Firebase Globals ---
+        // These are provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'my-calendar-app';
+        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = (typeof __initial_auth_token !== 'undefined') ? __initial_auth_token : null;
+        
+        // Firebase app instances
+        let fbApp, fbAuth, fbDb;
+        let eventsCollectionRef; // Will be set after auth
+        let unsubscribeFromEvents = () => {}; // Function to stop the listener
+
+        // --- App State ---
+        const AppState = { 
+            // dbInstance: null, // Removed: No longer using IndexedDB
+            fbApp: null,
+            fbAuth: null,
+            fbDb: null,
+            userId: null,
+            appId: appId,
+            events: [], 
+            templates: [], 
+            monthsToDisplay: 3, 
+            currentDate: new Date(), 
+            highlightedEventId: null, 
+            onConfirmCallback: null, 
+            eventDayCache: new Map(), 
+            activeTags: new Set(), 
+            draggedEvent: null, 
+            resizing: { event: null, type: null, originalStart: null, originalEnd: null, visibleDates: [] }, 
+            previewCells: new Set(), 
+            visibleStartDate: null, 
+            visibleEndDate: null 
+        };
+        
+        // --- Utility Functions (Unchanged) ---
+        function debounce(func, wait) { let timeout; return function (...args) { const later = () => { clearTimeout(timeout); func(...args); }; clearTimeout(timeout); timeout = setTimeout(later, wait); }; }
+        function showMessage(title, subText, colorClass = 'bg-indigo-600') { const box = document.getElementById('messageBox'), titleEl = document.getElementById('messageText'), subTextEl = document.getElementById('messageSubText'); box.className = `fixed p-4 ${colorClass} text-white rounded-lg shadow-xl transition-all duration-300`; Object.assign(box.style, { opacity: '1', transform: 'translateY(0)', display: 'block' }); titleEl.textContent = title; subTextEl.textContent = subText; setTimeout(() => { Object.assign(box.style, { opacity: '0', transform: 'translateY(100%)' }); setTimeout(() => { box.style.display = 'none'; }, 300); }, 3000); }
+        function safeUUID() { return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+        function formatLocalDate(date) { const y = date.getFullYear(), m = String(date.getMonth() + 1).padStart(2, "0"), d = String(date.getDate()).padStart(2, "0"); return `${y}-${m}-${d}`; }
+        function parseLocalDate(dateStr) { if (!dateStr) return null; const [year, month, day] = dateStr.split('-').map(Number); return new Date(year, month - 1, day); }
+        function getTextColorForBg(hex) { if (!hex) return '#ffffff'; if (hex.length === 4) { hex = '#' + [...hex.slice(1)].map(ch => ch + ch).join(''); } const r = parseInt(hex.slice(1, 3), 16) / 255; const g = parseInt(hex.slice(3, 5), 16) / 255; const b = parseInt(hex.slice(5, 7), 16) / 255; const toLinear = c => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)); const L = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b); return L > 0.4 ? '#000000' : '#ffffff'; }
+        function openConfirmationModal(title, text, callback) { document.getElementById('confirmModalTitle').textContent = title; document.getElementById('confirmModalText').textContent = text; AppState.onConfirmCallback = callback; const modal = document.getElementById('confirmModal'); modal.classList.remove('closed'); modal.classList.add('open'); }
+        function closeConfirmationModal() { const modal = document.getElementById('confirmModal'); modal.classList.add('closed'); modal.classList.remove('open'); AppState.onConfirmCallback = null; }
+
+        // --- Firestore (NEW) & Data Logic (Replaced) ---
+
+ /**
+ * Replaces: openDB, tx
+ * Initializes the Firebase App, Auth, and Firestore services.
+ * Fetches config from the API, then sets up the auth listener.
+ */
+async function initializeCloudDB() {
+    try {
+        // 1. Fetch the configuration from our new serverless API
+        const response = await fetch('/api/config');
+        if (!response.ok) {
+            throw new Error(`Failed to fetch config: ${response.statusText}`);
+        }
+        const serverConfig = await response.json();
+
+        const firebaseConfig = serverConfig.firebaseConfig;
+        const appId = serverConfig.appId;
+        const initialAuthToken = serverConfig.initialAuthToken;
+
+        // 2. Check if the fetched config is valid
+        if (!firebaseConfig || !firebaseConfig.projectId) {
+            throw new Error('Fetched Firebase config is invalid or missing.');
+        }
+
+        // 3. Initialize Firebase with the fetched config
+        fbApp = initializeApp(firebaseConfig);
+        fbDb = getFirestore(fbApp);
+        fbAuth = getAuth(fbApp);
+
+        AppState.fbApp = fbApp;
+        AppState.fbDb = fbDb;
+        AppState.fbAuth = fbAuth;
+
+        setLogLevel('Debug'); // Enable Firestore logging
+
+        onAuthStateChanged(fbAuth, async (user) => {
+            if (user) {
+                console.log('User is signed in:', user.uid);
+                AppState.userId = user.uid;
+                document.getElementById('currentUserId').textContent = user.uid;
+
+                const collectionPath = `artifacts/${appId}/public/data/events`;
+                console.log('Using collection path:', collectionPath);
+                eventsCollectionRef = collection(fbDb, collectionPath);
+
+                setupFirestoreListener();
+            } else {
+                console.log('No user is signed in. Attempting to sign in...');
+                AppState.userId = null;
+                document.getElementById('currentUserId').textContent = 'authenticating...';
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(fbAuth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(fbAuth);
+                    }
+                } catch (authError) {
+                    console.error('Error during sign-in:', authError);
+                    showMessage('Auth Error', 'Could not authenticate user.', 'bg-red-500');
+                    document.getElementById('loadingEvents').textContent = 'Error: Authentication failed.';
+                }
+            }
+        });
+
+    } catch (err) {
+        console.error('Configuration or Initialization Error:', err);
+        showMessage('Config Error', err.message, 'bg-red-500');
+        document.getElementById('loadingEvents').textContent = `Error: ${err.message}`;
+    }
+}
+
+        /**
+         * Replaces: getAllEventsFromDB, setupEventListenerAndLoad
+         * Attaches a real-time snapshot listener to the events collection.
+         * This function is called once the user is authenticated.
+         */
+        function setupFirestoreListener() {
+            if (!eventsCollectionRef) {
+                console.error('Cannot set up listener: eventsCollectionRef is not set.');
+                return;
+            }
+
+            // Unsubscribe from any previous listener
+            unsubscribeFromEvents();
+
+            const q = query(eventsCollectionRef); // No ordering needed here, will sort in-memory
+            
+            document.getElementById('loadingEvents').textContent = 'Loading events...';
+
+            unsubscribeFromEvents = onSnapshot(q, (snapshot) => {
+                console.log(`Received ${snapshot.size} events from Firestore.`);
+                const allEvents = [];
+                snapshot.forEach((doc) => {
+                    allEvents.push(doc.data());
+                });
+                
+                // Process and sort events, just like the old logic
+                AppState.events = allEvents.map(e => ({ 
+                    ...e, 
+                    id: e.id, // Ensure ID is present
+                    endDate: e.endDate || e.startDate, 
+                    startTime: e.startTime || '08:00', 
+                    color: e.color || '#4f46e5', 
+                    includeWeekends: !!e.includeWeekends, 
+                    tags: Array.isArray(e.tags) ? e.tags : [], 
+                    notes: Array.isArray(e.notes) ? e.notes : [], 
+                    msTeamsLink: e.msTeamsLink || '', 
+                    userId: e.userId || 'unknown', // Track which user created it
+                    createdAt: e.createdAt || new Date().toISOString() 
+                })).sort((a,b) => a.startDate.localeCompare(b.startDate) || a.startTime.localeCompare(b.startTime));
+                
+                // Re-render the UI with the new data
+                renderCalendar(); 
+                renderTagFilters(); 
+                filterAndRenderEventList();
+                
+                if (AppState.events.length === 0 && document.getElementById('searchBar').value === '' && AppState.activeTags.size === 0) {
+                     document.getElementById('eventListContainer').innerHTML = '<p class="text-gray-500 text-sm italic p-4 text-center">No events found. Add one to get started!</p>';
+                }
+
+            }, (error) => {
+                console.error('Error listening to Firestore:', error);
+                showMessage('Connection Error', 'Failed to load real-time data.', 'bg-red-500');
+                document.getElementById('loadingEvents').textContent = 'Error: Connection failed.';
+            });
+        }
+
+        /**
+         * Replaces: addOrUpdateEventInDB
+         * Saves a single event document to Firestore using setDoc.
+         */
+        async function addOrUpdateEventInDB(evt) {
+            if (!eventsCollectionRef) {
+                console.error('Cannot save event: Firestore is not ready.');
+                throw new Error('Database not initialized.');
+            }
+            // Use the event's ID to create a document reference
+            const eventDocRef = doc(eventsCollectionRef, evt.id);
+            // setDoc will create or overwrite the document
+            await setDoc(eventDocRef, evt);
+            return evt.id;
+        }
+
+        /**
+         * Replaces: deleteEventFromDB
+         * Deletes a single event document from Firestore.
+         */
+        async function deleteEventFromDB(id) {
+            if (!eventsCollectionRef) {
+                console.error('Cannot delete event: Firestore is not ready.');
+                throw new Error('Database not initialized.');
+            }
+            const eventDocRef = doc(eventsCollectionRef, id);
+            await deleteDoc(eventDocRef);
+        }
+
+        /**
+         * Replaces: bulkImportEventsToDB
+         * Imports multiple events using a Firestore Write Batch for efficiency.
+         */
+        async function bulkImportEventsToDB(eventsList = []) {
+            if (!eventsCollectionRef) {
+                console.error('Cannot import events: Firestore is not ready.');
+                throw new Error('Database not initialized.');
+            }
+
+            const batch = writeBatch(fbDb);
+            let count = 0;
+            const currentUserId = AppState.userId || 'batch-import-user';
+
+            eventsList.forEach(raw => {
+                const newId = raw.id || safeUUID();
+                const eventDocRef = doc(eventsCollectionRef, newId);
+                const eventData = { 
+                    id: newId, 
+                    name: raw.name || 'Untitled Event', 
+                    startDate: raw.startDate, 
+                    startTime: raw.startTime || '08:00', 
+                    endDate: raw.endDate || raw.startDate, 
+                    color: raw.color || '#4f46e5', 
+                    includeWeekends: raw.includeWeekends === true, 
+                    userId: raw.userId || currentUserId, // Preserve original user if available
+                    tags: Array.isArray(raw.tags) ? raw.tags : [], 
+                    notes: Array.isArray(raw.notes) ? raw.notes : [], 
+                    msTeamsLink: raw.msTeamsLink || '', 
+                    createdAt: raw.createdAt || new Date().toISOString() 
+                };
+                batch.set(eventDocRef, eventData);
+                count++;
+            });
+            
+            await batch.commit();
+            return count;
+        }
+        
+        /**
+         * Replaces: deleteAllEventsFromDB
+         * Fetches all event docs and deletes them in a batch.
+         * This is a multi-user app, so this is a "delete all" for everyone.
+         */
+        async function deleteAllEventsFromDB() {
+            if (!eventsCollectionRef) {
+                console.error('Cannot reset events: Firestore is not ready.');
+                throw new Error('Database not initialized.');
+            }
+            
+            const snapshot = await getDocs(eventsCollectionRef);
+            if (snapshot.empty) {
+                return; // Nothing to delete
+            }
+
+            const batch = writeBatch(fbDb);
+            snapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            
+            await batch.commit();
+            console.log(`Deleted ${snapshot.size} events.`);
+        }
+
+        // --- BroadcastChannel / Storage Sync (REMOVED) ---
+        // const bc = ('BroadcastChannel' in window) ? new BroadcastChannel(CHANNEL_NAME) : null; // Removed
+        // function broadcastChange(payload = {}) { ... } // Removed
+        // if (bc) { bc.onmessage = ... } // Removed
+        // window.addEventListener('storage', (e) => { ... }); // Removed
+        // `onSnapshot` handles all real-time synchronization.
+
+        // --- Calendar Logic (Mostly Unchanged) ---
+		function getNextBusinessDay(date) { const d = new Date(date.getTime()); let day = d.getDay(); if (day === 6) d.setDate(d.getDate() + 2); else if (day === 0) d.setDate(d.getDate() + 1); d.setHours(0, 0, 0, 0); return d; }
+        function getBusinessDayDuration(start, end) { let current = new Date(start.getTime()), count = 0; current.setHours(0, 0, 0, 0); end.setHours(0, 0, 0, 0); while (current.getTime() <= end.getTime()) { if (current.getDay() >= 1 && current.getDay() <= 5) count++; current.setDate(current.getDate() + 1); } return count; }
+        function addBusinessDays(start, offset) { let result = getNextBusinessDay(start); let daysToAdd = offset; while (daysToAdd > 0) { result.setDate(result.getDate() + 1); if (result.getDay() >= 1 && result.getDay() <= 5) daysToAdd--; } return getNextBusinessDay(result); }
+        function addDays(date, days, includeWeekends) { let newDate = new Date(date); if (includeWeekends) { newDate.setDate(newDate.getDate() + (days - 1)); return newDate; } let daysAdded = 0; while (daysAdded < days -1) { newDate.setDate(newDate.getDate() + 1); if (newDate.getDay() !== 0 && newDate.getDay() !== 6) daysAdded++; } return newDate; }
+        function calculateDays(startStr, endStr, includeWeekends = false) { if (!startStr || !endStr) return 0; const start = parseLocalDate(startStr), end = parseLocalDate(endStr); if (start > end) return 1; let current = new Date(start), count = 0; while (current <= end) { const day = current.getDay(); if (includeWeekends || (day !== 0 && day !== 6)) count++; current.setDate(current.getDate() + 1); } return count > 0 ? count : 1; }
+        window.updateDurationDisplay = function() { const start = document.getElementById('startDate').value, end = document.getElementById('endDate').value, weekends = document.getElementById('includeWeekends').checked; document.getElementById('durationDisplay').textContent = `${calculateDays(start, end || start, weekends)} day(s)`; };
+        window.setMonthsToDisplay = function(count) { let newCount = parseInt(count); if (isNaN(newCount) || newCount < 1) newCount = 1; AppState.monthsToDisplay = newCount; document.getElementById('monthsCount').value = AppState.monthsToDisplay; AppState.currentDate.setDate(1); window.renderCalendar(); filterAndRenderEventList(); };
+        function buildEventDayCache() { AppState.eventDayCache.clear(); AppState.events.forEach(event => { const start = parseLocalDate(event.startDate), end = parseLocalDate(event.endDate || event.startDate); let current = new Date(start); while (current <= end) { const dateStr = formatLocalDate(current); if (event.includeWeekends || (current.getDay() !== 0 && current.getDay() !== 6)) { if (!AppState.eventDayCache.has(dateStr)) AppState.eventDayCache.set(dateStr, []); AppState.eventDayCache.get(dateStr).push(event); } current.setDate(current.getDate() + 1); } }); AppState.eventDayCache.forEach((events, date) => { events.sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00')); }); }
+        function getEventsForDate(date) { return AppState.eventDayCache.get(formatLocalDate(date)) || []; }
+        function isDayIncludedInEvent(dayDate, event) { const start = parseLocalDate(event.startDate), end = parseLocalDate(event.endDate || event.startDate); dayDate.setHours(0,0,0,0); return (dayDate >= start && dayDate <= end) && (event.includeWeekends || (dayDate.getDay() !== 0 && dayDate.getDay() !== 6)); }
+        function renderTagFilters() { const allTags = new Set(); AppState.events.forEach(e => e.tags?.forEach(t => allTags.add(t))); const container = document.getElementById('tagFilterContainer'); container.innerHTML = ''; if (allTags.size === 0) { container.style.display = 'none'; return; } container.style.display = 'flex'; Array.from(allTags).sort().forEach(tag => { const btn = document.createElement('button'); btn.className = 'tag-filter-btn px-2 py-1 text-xs font-medium bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300 transition'; btn.textContent = tag; btn.dataset.tag = tag; if (AppState.activeTags.has(tag)) btn.classList.add('active'); container.appendChild(btn); }); }
+        function filterAndRenderEventList() {
+            let filteredEvents = AppState.events;
+            const searchTerm = document.getElementById('searchBar').value.toLowerCase();
+            if (searchTerm) filteredEvents = filteredEvents.filter(e => e.name.toLowerCase().includes(searchTerm));
+            if (AppState.activeTags.size > 0) filteredEvents = filteredEvents.filter(e => e.tags?.some(t => AppState.activeTags.has(t)));
+            const { visibleStartDate, visibleEndDate } = AppState;
+            if (visibleStartDate && visibleEndDate) {
+                filteredEvents = filteredEvents.filter(event => {
+                    const eventStart = parseLocalDate(event.startDate);
+                    const eventEnd = parseLocalDate(event.endDate || event.startDate);
+                    return eventStart <= visibleEndDate && eventEnd >= visibleStartDate;
+                });
+            }
+            renderEventList(filteredEvents);
+        }
+        function renderEventList(eventsToRender = AppState.events) {
+            const container = document.getElementById('eventListContainer');
+            // Clear loading message on first real render
+            const loadingEl = document.getElementById('loadingEvents');
+            if(loadingEl) loadingEl.remove();
+
+            if (!eventsToRender || eventsToRender.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-sm italic p-4 text-center">No events match.</p>`;
+                return;
+            }
+            container.innerHTML = eventsToRender.map(e => {
+                const isSel = e.id === AppState.highlightedEventId;
+                const start = parseLocalDate(e.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const end = e.endDate && e.endDate !== e.startDate ? ' - ' + parseLocalDate(e.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+                let dateDisplay = (e.startDate === e.endDate || !e.endDate) ? `${start} (${e.startTime || '08:00'})` : `${start}${end}`;
+                
+                let tagsHtml = '';
+                const TAG_LIMIT = 2;
+                if (e.tags && e.tags.length > 0) {
+                    const visibleTags = e.tags.slice(0, TAG_LIMIT);
+                    const hiddenTagsCount = e.tags.length - TAG_LIMIT;
+                    tagsHtml = visibleTags.map(t => `<span class="text-xs bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded-full">${t}</span>`).join('');
+                    if (hiddenTagsCount > 0) {
+                        tagsHtml += `<span class="text-xs bg-gray-300 text-gray-800 px-1.5 py-0.5 rounded-full" title="${e.tags.slice(TAG_LIMIT).join(', ')}">+${hiddenTagsCount}</span>`;
+                    }
+                }
+                let teamsIconHtml = '';
+                if (e.msTeamsLink) {
+                    teamsIconHtml = `<a href="${e.msTeamsLink}" target="_blank" rel="noopener noreferrer" class="mr-1.5 text-indigo-600 hover:text-indigo-800 flex-shrink-0" onclick="event.stopPropagation()" title="Open MS Teams Link">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd"></path>
+                                        </svg>
+                                    </a>`;
+                }
+                // Added a small chip to show which user created the event
+                const userChip = e.userId === AppState.userId 
+                    ? `<span class="text-xs font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full ml-1.5" title="Created by you">Me</span>`
+                    : `<span class="text-xs font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded-full ml-1.5" title="Created by ${e.userId}">Other</span>`;
+
+                return `<div class="p-3 rounded-lg border flex items-start transition cursor-pointer ${isSel ? 'border-pink-500 ring-2 ring-pink-200 bg-pink-50' : 'border-gray-200 hover:bg-gray-50'}" data-action="highlight-event" data-event-id="${e.id}">
+                            <div class="w-3 h-3 rounded-full mr-3 mt-1 flex-shrink-0" style="background-color: ${e.color};"></div>
+                            <div class="flex-grow min-w-0">
+                                <p class="font-medium text-gray-800 truncate" title="${e.name.replace(/"/g, '&quot;')}">${e.name}</p>
+                                <div class="flex items-center text-xs text-gray-500 mt-1 overflow-hidden">
+                                    ${teamsIconHtml}
+                                    <span class="flex-shrink-0">${dateDisplay}</span>
+                                    <div class="flex items-center space-x-1 truncate ml-1.5">${tagsHtml}</div>
+                                </div>
+                            </div>
+                            ${userChip}
+                            <button data-event-id="${e.id}" class="edit-event-btn ml-2 text-indigo-500 p-1 rounded-full hover:bg-indigo-100 flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zm-1.5 1.5l2.121 2.121-10.707 10.707-.707.707H3v-2.121l10.707-10.707z" /></svg></button>
+                        </div>`;
+            }).join('');
+        }
+        function clearAllHighlights() { document.querySelectorAll('.day-cell.highlighted-day').forEach(c => c.classList.remove('highlighted-day')); document.querySelectorAll('#eventListContainer > div').forEach(i => i.className = i.className.replace(/border-pink-500 ring-2 ring-pink-200 bg-pink-50/g, 'border-gray-200 hover:bg-gray-50')); }
+        window.toggleEventHighlight = function(id, el) { clearAllHighlights(); if (AppState.highlightedEventId === id) { AppState.highlightedEventId = null; return; } AppState.highlightedEventId = id; el.classList.remove('border-gray-200', 'hover:bg-gray-50'); el.classList.add('border-pink-500', 'ring-2', 'ring-pink-200', 'bg-pink-50'); const event = AppState.events.find(e => e.id === id); if (!event) return; let current = new Date(parseLocalDate(event.startDate)); const end = parseLocalDate(event.endDate || event.startDate); while (current <= end) { if (isDayIncludedInEvent(current, event)) { const cell = document.querySelector(`.day-cell[data-date="${formatLocalDate(current)}"]`); if (cell) cell.classList.add('highlighted-day'); } current.setDate(current.getDate() + 1); } };
+        function generateContinuousCalendarHTML(startDate, endDate) { const today = new Date(); today.setHours(0, 0, 0, 0); const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri"]; let html = `<h3 class="text-xl font-semibold text-gray-700 mb-3">Continuous Weekday Calendar</h3><div class="grid grid-cols-5 text-center font-medium text-xs text-gray-500 mb-1">${weekdays.map(d => `<div>${d}</div>`).join("")}</div><div class="relative"><div id="dayCellsContainer" class="grid grid-cols-5 gap-1 relative">`; let current = new Date(startDate); current.setHours(0, 0, 0, 0); let renderedCount = 0; while (current <= endDate) { const dayOfWeek = current.getDay(); if (dayOfWeek >= 1 && dayOfWeek <= 5) { const isToday = current.getTime() === today.getTime(); const dateStr = formatLocalDate(current); const displayDate = `${String(current.getDate()).padStart(2, '0')}-${current.toLocaleDateString('en-US', { month: 'short' })}`; const dayEvents = getEventsForDate(current); const gridStyle = (renderedCount === 0) ? `grid-column-start: ${dayOfWeek};` : ''; let classes = `day-cell bg-white border border-gray-200 rounded-lg p-2 text-gray-800 shadow-sm transition hover:shadow-md ${isToday ? "today" : ""}`; const hasEvents = dayEvents.length > 0; const counterHTML = `<div class="event-counter ${hasEvents ? 'has-events' : 'no-events'}" data-action="quick-add" title="Quick add event"><span class="counter-num">${dayEvents.length}</span><span class="counter-plus">+</span></div>`; let content = `<div class="flex items-center justify-between text-sm font-semibold mb-1"><span data-action="open-agenda" class="cursor-pointer hover:underline">${displayDate}</span></div>`; const highlight = AppState.events.find(e => e.id === AppState.highlightedEventId); if (highlight && isDayIncludedInEvent(current, highlight)) classes += " highlighted-day"; html += `<div class="${classes}" style="${gridStyle}" data-date="${dateStr}" data-cell-index="${renderedCount}">${content}${counterHTML}</div>`; renderedCount++; } current.setDate(current.getDate() + 1); } html += `</div></div>`; return html; }
+        function getWeekKey(date) { const m = new Date(date); const day = m.getDay(); const diff = m.getDate() - day + (day === 0 ? -6 : 1); m.setDate(diff); return `${m.getFullYear()}-${getWeekNumber(m)}`; }
+        function getWeekNumber(d) { d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7)); const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1)); return Math.ceil((((d - yearStart) / 86400000) + 1) / 7); }
+        function calculateWeekHeights(cells) { const weekEvents = new Map(); cells.forEach(cell => { const dateStr = cell.dataset.date; if (!dateStr) return; const weekKey = getWeekKey(parseLocalDate(dateStr)); const dayEvents = getEventsForDate(parseLocalDate(dateStr)); const max = weekEvents.get(weekKey) || 0; weekEvents.set(weekKey, Math.max(max, dayEvents.length)); }); return weekEvents; }
+        function groupCellsByWeek(cells, gridRect, weekHeights) { const weekRows = []; cells.forEach(cell => { const cellRect = cell.getBoundingClientRect(); const top = Math.round(cellRect.top - gridRect.top); const dateStr = cell.dataset.date; if (!dateStr) return; const date = parseLocalDate(dateStr); const weekKey = getWeekKey(date); const height = CALENDAR_CONSTANTS.BASE_CELL_HEIGHT + ((weekHeights.get(weekKey) || 0) * CALENDAR_CONSTANTS.EVENT_ROW_HEIGHT); cell.style.minHeight = `${height}px`; let row = weekRows.find(r => Math.abs(r.top - top) < 5); if (!row) { row = { top, weekKey, height, cells: [] }; weekRows.push(row); } row.cells.push({ element: cell, rect: cellRect, index: parseInt(cell.dataset.cellIndex || '0'), date }); }); weekRows.sort((a, b) => a.top - b.top); weekRows.forEach(row => row.cells.sort((a, b) => a.rect.left - b.rect.left)); return weekRows; }
+        function renderEventsToWeeks(weekRows, gridRect, container) { const rowSlots = weekRows.map(() => []); AppState.events.forEach(event => { const start = parseLocalDate(event.startDate), end = parseLocalDate(event.endDate || event.startDate); weekRows.forEach((row, rowIndex) => { let cellsInEvent = []; row.cells.forEach(cell => { if (cell.date >= start && cell.date <= end) cellsInEvent.push(cell); }); if (cellsInEvent.length === 0) return; const startCell = cellsInEvent[0], endCell = cellsInEvent[cellsInEvent.length - 1]; const left = startCell.rect.left - gridRect.left + CALENDAR_CONSTANTS.EVENT_SIDE_MARGINS; const width = (endCell.rect.right - gridRect.left - CALENDAR_CONSTANTS.EVENT_SIDE_MARGINS) - left; let slotIndex = 0; while (slotIndex < 10 && rowSlots[rowIndex][slotIndex]?.some(p => !((left + width) <= p.left || left >= (p.left + p.width)))) slotIndex++; if (!rowSlots[rowIndex][slotIndex]) rowSlots[rowIndex][slotIndex] = []; rowSlots[rowIndex][slotIndex].push({ left, width }); const top = row.top + CALENDAR_CONSTANTS.DATE_LABEL_HEIGHT + (slotIndex * CALENDAR_CONSTANTS.EVENT_SLOT_HEIGHT); const textColor = getTextColorForBg(event.color); const bar = document.createElement('div'); bar.className = 'continuous-event event-bar'; bar.style.cssText = `left: ${left}px; width: ${width}px; top: ${top}px; background-color: ${event.color}; color: ${textColor}; pointer-events: auto;`; bar.dataset.eventId = event.id; bar.setAttribute('draggable', 'true'); const showName = rowIndex === 0 || cellsInEvent[0].date.getTime() === start.getTime() || cellsInEvent.length === 1; if (showName && width > 40) bar.innerHTML = `<span class="truncate text-xs flex-grow text-center px-1" style="font-size: 0.65rem; line-height: 1.2;">${event.name}</span>`; const isFirst = rowIndex === 0 || cellsInEvent[0].date.getTime() <= start.getTime(); const isLast = rowIndex === weekRows.length - 1 || cellsInEvent[cellsInEvent.length - 1].date.getTime() >= end.getTime(); if (isFirst) bar.innerHTML += `<div class="resize-handle left-handle" data-resize-type="start"></div>`; if (isLast) bar.innerHTML += `<div class="resize-handle right-handle" data-resize-type="end"></div>`; if (showName) bar.innerHTML += `<button class="calendar-edit-btn absolute right-1 text-xs" title="Edit event" data-event-id="${event.id}" style="font-size: 0.6rem; padding: 0 2px;">✎</button>`; container.appendChild(bar); }); }); }
+        function renderContinuousEventBars() { const oldContainer = document.getElementById('continuousEventsContainer'); if (oldContainer) oldContainer.remove(); const dayCellsContainer = document.getElementById('dayCellsContainer'); if (!dayCellsContainer) return; const eventsContainer = document.createElement('div'); eventsContainer.id = 'continuousEventsContainer'; dayCellsContainer.parentNode.insertBefore(eventsContainer, dayCellsContainer.nextSibling); const cells = Array.from(dayCellsContainer.querySelectorAll('.day-cell')); if (cells.length === 0) return; const gridRect = dayCellsContainer.getBoundingClientRect(); const weekHeights = calculateWeekHeights(cells); const weekRows = groupCellsByWeek(cells, gridRect, weekHeights); renderEventsToWeeks(weekRows, gridRect, eventsContainer); }
+        window.renderCalendar = function() { const container = document.getElementById("calendarContainer"), header = document.getElementById("currentMonthYear"); container.innerHTML = ""; const start = new Date(AppState.currentDate.getFullYear(), AppState.currentDate.getMonth(), 1); const end = new Date(start.getFullYear(), start.getMonth() + AppState.monthsToDisplay, 0); AppState.visibleStartDate = start; AppState.visibleEndDate = end; buildEventDayCache(); container.innerHTML = generateContinuousCalendarHTML(start, end); setTimeout(renderContinuousEventBars, CALENDAR_CONSTANTS.RENDER_DELAY); const startLabel = start.toLocaleDateString("en-US", { month: "long", year: "numeric" }); const endLabel = end.toLocaleDateString("en-US", { month: "long", year: "numeric" }); header.textContent = start.getMonth() === end.getMonth() ? startLabel : `${startLabel} – ${endLabel}`; };
+        window.jumpToToday = function() { AppState.currentDate = new Date(); window.renderCalendar(); filterAndRenderEventList(); };
+        window.nextMonth = function() { AppState.currentDate.setMonth(AppState.currentDate.getMonth() + AppState.monthsToDisplay); window.renderCalendar(); filterAndRenderEventList(); };
+        window.prevMonth = function() { AppState.currentDate.setMonth(AppState.currentDate.getMonth() - AppState.monthsToDisplay); window.renderCalendar(); filterAndRenderEventList(); };
+        function resetTagsUI() { document.querySelectorAll('.preset-tag-chip').forEach(c => c.classList.remove('active')); document.getElementById('customTagsContainer').innerHTML = ''; document.getElementById('newTagInput').value = ''; }
+        function populateTagsForModal(tags = []) { resetTagsUI(); tags.forEach(tag => { const presetChip = document.querySelector(`.preset-tag-chip[data-tag="${tag}"]`); if (presetChip) { presetChip.classList.add('active'); } else { addTagToUI(tag); } }); }
+        function updateNotesHistoryUI(event) {
+            const notes = Array.isArray(event?.notes) ? event.notes : [];
+            const historySelect = document.getElementById('notesHistorySelect');
+            const clearBtn = document.getElementById('clearNotesHistoryBtn');
+            historySelect.innerHTML = '<option value="">History</option>';
+            notes.slice().reverse().forEach((note, index) => {
+                const date = new Date(note.timestamp).toLocaleString();
+                historySelect.innerHTML += `<option value="${notes.length - 1 - index}">${date}</option>`;
+            });
+            clearBtn.disabled = notes.length <= 1;
+        }
+        window.openCreateEventModal = function() {
+            document.getElementById('eventForm').reset();
+            document.getElementById('eventId').value = '';
+            document.getElementById('modalTitle').textContent = 'Create Event';
+            document.getElementById('saveEventButton').textContent = 'Save Event';
+            document.getElementById('deleteEventButton').classList.add('hidden');
+            document.getElementById('eventIdDisplayContainer').classList.add('hidden');
+            resetTagsUI();
+            updateNotesHistoryUI(null);
+            document.getElementById('eventNotes').value = '';
+            document.getElementById('notesHistoryView').classList.add('hidden');
+            document.getElementById('msTeamsLink').value = '';
+            document.getElementById('msTeamsLinkIcon').classList.add('hidden');
+            document.getElementById('startTime').value = '08:00';
+            updateDurationDisplay();
+            document.getElementById('eventModal').classList.remove('closed'); document.getElementById('eventModal').classList.add('open');
+            clearAllHighlights();
+            setActiveColor('#4f46e5');
+        };
+        window.openEditEventModal = function(event) { if (!event) return;
+            document.getElementById('eventId').value = event.id;
+            document.getElementById('eventName').value = event.name;
+            document.getElementById('startDate').value = event.startDate;
+            document.getElementById('endDate').value = event.endDate || '';
+            document.getElementById('startTime').value = event.startTime || '08:00';
+            document.getElementById('includeWeekends').checked = !!event.includeWeekends;
+            const link = event.msTeamsLink || '';
+            document.getElementById('msTeamsLink').value = link;
+            const linkIcon = document.getElementById('msTeamsLinkIcon');
+            if (link) {
+                linkIcon.href = link;
+                linkIcon.classList.remove('hidden');
+            } else {
+                linkIcon.classList.add('hidden');
+            }
+            document.getElementById('modalTitle').textContent = 'Edit Event';
+            document.getElementById('saveEventButton').textContent = 'Update Event';
+            document.getElementById('deleteEventButton').classList.remove('hidden');
+            document.getElementById('eventIdText').textContent = event.id;
+            document.getElementById('eventIdDisplayContainer').classList.remove('hidden');
+            
+            populateTagsForModal(event.tags);
+            
+            const notes = Array.isArray(event.notes) ? event.notes : [];
+            const latestNote = notes[notes.length - 1]?.content || '';
+            document.getElementById('eventNotes').value = latestNote;
+            updateNotesHistoryUI(event);
+            document.getElementById('notesHistoryView').classList.add('hidden');
+
+            updateDurationDisplay();
+            setActiveColor(event.color || '#4f46e5');
+            document.getElementById('eventModal').classList.remove('closed'); document.getElementById('eventModal').classList.add('open');
+            clearAllHighlights();
+        };
+        function closeDuplicateModal() { document.getElementById('duplicateModal').classList.add('closed'); }
+        window.closeEventModal = function() { document.getElementById('eventModal').classList.add('closed'); document.getElementById('eventModal').classList.remove('open'); };
+        
+        // --- Event Handlers (Updated) ---
+        
+        window.saveEvent = async function(e) { e.preventDefault();
+            const id = document.getElementById('eventId').value || safeUUID();
+            const existingEvent = AppState.events.find(ev => ev.id === id);
+            const tags = [
+                ...Array.from(document.querySelectorAll('.preset-tag-chip.active')).map(el => el.dataset.tag),
+                ...Array.from(document.querySelectorAll('#customTagsContainer .custom-tag')).map(el => el.dataset.tag)
+            ];
+            const start = document.getElementById('startDate').value; if (!start) { showMessage('Input Error', 'Start Date is required.', 'bg-red-500'); return; }
+            const end = document.getElementById('endDate').value || start; if (parseLocalDate(start) > parseLocalDate(end)) { showMessage('Input Error', 'End Date before Start Date.', 'bg-red-500'); return; }
+            
+            const notes = existingEvent ? [...(existingEvent.notes || [])] : [];
+            const latestNoteContent = notes[notes.length - 1]?.content;
+            const currentNoteContent = document.getElementById('eventNotes').value.trim();
+            if (currentNoteContent !== latestNoteContent) {
+                notes.push({ timestamp: new Date().toISOString(), content: currentNoteContent, userId: AppState.userId });
+            }
+            
+            const eventData = { 
+                id, 
+                startDate: start, 
+                startTime: document.getElementById('startTime').value, 
+                endDate: end, 
+                tags, 
+                notes, 
+                name: document.getElementById('eventName').value.trim(), 
+                color: document.getElementById('eventColor').value, 
+                includeWeekends: document.getElementById('includeWeekends').checked, 
+                msTeamsLink: document.getElementById('msTeamsLink').value, 
+                userId: existingEvent?.userId || AppState.userId, // Keep original creator
+                createdAt: existingEvent?.createdAt || new Date().toISOString(),
+                lastModifiedBy: AppState.userId, // Track last modifier
+                lastModifiedAt: new Date().toISOString()
+            };
+
+            try { 
+                await addOrUpdateEventInDB(eventData); 
+                showMessage('Success', existingEvent ? 'Event updated.' : 'Event created.', 'bg-green-600'); 
+                closeEventModal(); 
+                // No broadcast needed, onSnapshot will handle it
+            } catch (err) { 
+                console.error("Save Error:", err);
+                showMessage('Error', 'Failed to save event.', 'bg-red-500'); 
+            }
+        };
+
+        window.quickAddEvent = async function(dateStr) { 
+            if (!dateStr || !AppState.userId) return; 
+            const eventData = { 
+                id: safeUUID(), 
+                name: 'placeholder', 
+                startDate: dateStr, 
+                endDate: dateStr, 
+                startTime: '08:00', 
+                color: '#9ca3af', 
+                includeWeekends: false, 
+                tags: [], 
+                notes:[], 
+                msTeamsLink:'', 
+                userId: AppState.userId, // Set current user as creator
+                createdAt: new Date().toISOString() 
+            }; 
+            try { 
+                await addOrUpdateEventInDB(eventData); 
+                // No broadcast needed
+            } catch (err) { 
+                showMessage('Error', 'Failed to add placeholder event.', 'bg-red-500'); 
+            } 
+        };
+
+        window.deleteEvent = function() { 
+            const id = document.getElementById('eventId').value, name = document.getElementById('eventName').value || 'this event'; if (!id) return; 
+            openConfirmationModal('Confirm Deletion', `Delete "${name}" permanently?`, async () => { 
+                try { 
+                    await deleteEventFromDB(id); 
+                    showMessage('Success', 'Event deleted.', 'bg-green-600'); 
+                    closeEventModal(); 
+                    if (AppState.highlightedEventId === id) AppState.highlightedEventId = null;
+                    // No broadcast needed
+                } catch (err) { 
+                    showMessage('Error', 'Failed to delete event.', 'bg-red-500'); 
+                } 
+            }); 
+        };
+
+        window.exportEvents = async function() { 
+            // This now exports all events from AppState, which is in sync with Firestore
+            const all = AppState.events;
+            const a = document.createElement('a'); 
+            a.href = URL.createObjectURL(new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' })); 
+            a.download = `calendar_events_${new Date().toISOString().slice(0,10)}.json`; 
+            a.click(); 
+            URL.revokeObjectURL(a.href); 
+            showMessage('Export Complete', `${all.length} events saved.`, 'bg-green-600'); 
+        };
+        
+        window.importEvents = function() { 
+            const fileInput = document.getElementById('fileInput'); 
+            fileInput.click(); 
+            // The fileInput 'change' listener will handle the import
+        };
+        
+        window.resetAllEvents = function() { 
+            openConfirmationModal('Confirm Reset', 'This will delete ALL events for ALL users. Are you sure?', async () => { 
+                try { 
+                    await deleteAllEventsFromDB(); 
+                    // No AppState clear needed, onSnapshot will update
+                    showMessage('Reset Complete', 'All events removed.', 'bg-red-600'); 
+                } catch (err) { 
+                    showMessage('Reset Failed', 'Could not delete events.', 'bg-red-500'); 
+                } 
+            }); 
+        };
+
+        window.handleDragStart = function(e, event) { 
+            e.stopPropagation(); 
+            AppState.draggedEvent = event; 
+            e.dataTransfer.setData('text/plain', event.id); 
+            e.dataTransfer.effectAllowed = "move"; 
+            const ghost = document.createElement('div'); 
+            ghost.textContent = event.name; 
+            Object.assign(ghost.style, { background: event.color, color: 'white', padding: '4px 8px', borderRadius: '4px', position: 'absolute', top: '-1000px' }); 
+            document.body.appendChild(ghost); 
+            e.dataTransfer.setDragImage(ghost, 0, 0); 
+            setTimeout(() => document.body.removeChild(ghost), 0); 
+        };
+        
+        window.handleDrop = async function(e, dateStr, el) { 
+            e.preventDefault(); 
+            e.stopPropagation(); 
+            if (el) el.classList.remove("drag-over"); 
+            const dragged = AppState.draggedEvent; 
+            if (!dragged) return; 
+            const targetDate = parseLocalDate(dateStr); 
+            if (!targetDate) return; 
+            const duration = getBusinessDayDuration(parseLocalDate(dragged.startDate), parseLocalDate(dragged.endDate || dragged.startDate)) - 1; 
+            const newStart = getNextBusinessDay(targetDate); 
+            const newEnd = addBusinessDays(newStart, duration); 
+            dragged.startDate = formatLocalDate(newStart); 
+            dragged.endDate = formatLocalDate(newEnd); 
+            dragged.lastModifiedBy = AppState.userId; // Track modifier
+            dragged.lastModifiedAt = new Date().toISOString();
+            try { 
+                await addOrUpdateEventInDB(dragged); 
+                // No broadcast needed
+                showMessage('Event Moved', `${dragged.name} to ${dragged.startDate}`, 'bg-green-600'); 
+            } catch (err) { 
+                showMessage('Error', 'Could not move event.', 'bg-red-500'); 
+            } finally { 
+                AppState.draggedEvent = null; 
+            } 
+        };
+        
+        window.importTemplates = function() { const input = document.createElement("input"); input.type = "file"; input.accept = ".json"; input.onchange = () => { const file = input.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = e => { try { const tpls = JSON.parse(e.target.result); if (!Array.isArray(tpls) || !tpls.every(t => t.name)) throw new Error('Invalid'); AppState.templates = tpls; localStorage.setItem("templates", JSON.stringify(tpls)); populateTemplateDropdown(); showMessage('Templates Imported', `${tpls.length} templates loaded.`, 'bg-green-600'); } catch (err) { showMessage('Import Error', 'Invalid JSON.', 'bg-red-500'); } }; reader.readAsText(file); }; input.click(); };
+        function populateTemplateDropdown() { const select = document.getElementById("templateSelect"); if (!select) return; select.innerHTML = `<option value="">-- Apply Template --</option><option value="duplicate">Duplicate by ID...</option><option disabled>––––––––––</option>`; AppState.templates.forEach((tpl, idx) => { select.innerHTML += `<option value="${idx}">${tpl.name}</option>`; }); }
+        function applyTemplateAndRecalculate() { const select = document.getElementById('templateSelect'), value = select.value; if (value === 'duplicate') { document.getElementById('duplicateModal').classList.remove('closed'); select.value = ""; return; } const startVal = document.getElementById('startDate').value; if (value !== "" && startVal) { const tpl = AppState.templates[value]; if (!tpl) return; if (tpl.durationDays) { document.getElementById('endDate').value = formatLocalDate(addDays(parseLocalDate(startVal), tpl.durationDays, document.getElementById('includeWeekends').checked)); } document.getElementById('eventName').value = tpl.name || ''; setActiveColor(tpl.color || '#4f46e5'); } window.updateDurationDisplay(); select.value = ""; }
+        (function loadStoredTemplates() { const saved = localStorage.getItem("templates"); if (saved) { try { AppState.templates = JSON.parse(saved); populateTemplateDropdown(); } catch (err) {} } else { populateTemplateDropdown(); } })();
+        
+        let resizeMoveHandler = null, resizeEndHandler = null;
+        window.startResize = function(e, event, type) { e.stopPropagation(); e.preventDefault(); Object.assign(AppState.resizing, { event, type, originalStart: parseLocalDate(event.startDate), originalEnd: parseLocalDate(event.endDate || event.startDate), visibleDates: Array.from(document.querySelectorAll(".day-cell")).map(c => c.dataset.date) }); resizeMoveHandler = handleResizeMove; resizeEndHandler = handleResizeEnd; document.addEventListener("mousemove", resizeMoveHandler); document.addEventListener("mouseup", resizeEndHandler); document.body.style.cursor = "ew-resize"; };
+        function renderResizePreview(startIdx, endIdx) { AppState.previewCells.forEach(c => c.classList.remove("preview-active")); AppState.previewCells.clear(); const allCells = Array.from(document.querySelectorAll(".day-cell")); for (let i = startIdx; i <= endIdx; i++) { const cell = allCells[i]; if (cell) { cell.classList.add("preview-active"); AppState.previewCells.add(cell); } } }
+        function getHoveredCellIndex(e) { const el = document.elementFromPoint(e.clientX, e.clientY)?.closest(".day-cell"); return el ? AppState.resizing.visibleDates.indexOf(el.dataset.date) : -1; }
+        function handleResizeMove(e) { if (!AppState.resizing.event) return; const hoverIdx = getHoveredCellIndex(e); if (hoverIdx === -1) return; const startIdx = AppState.resizing.visibleDates.indexOf(formatLocalDate(AppState.resizing.originalStart)); const endIdx = AppState.resizing.visibleDates.indexOf(formatLocalDate(AppState.resizing.originalEnd)); if (startIdx === -1 || endIdx === -1) return; const rangeStart = AppState.resizing.type === "start" ? Math.min(hoverIdx, endIdx) : startIdx; const rangeEnd = AppState.resizing.type === "end" ? Math.max(hoverIdx, startIdx) : endIdx; renderResizePreview(rangeStart, rangeEnd); }
+        async function handleResizeEnd(e) { 
+            if (!AppState.resizing.event) return; 
+            document.removeEventListener("mousemove", resizeMoveHandler); 
+            document.removeEventListener("mouseup", resizeEndHandler); 
+            document.body.style.cursor = ""; 
+            AppState.previewCells.forEach(c => c.classList.remove("preview-active")); 
+            AppState.previewCells.clear(); 
+            const hoverIdx = getHoveredCellIndex(e); 
+            if (hoverIdx === -1) { AppState.resizing = { event: null, visibleDates: [] }; return; } 
+            const ev = AppState.resizing.event; 
+            const startIdx = AppState.resizing.visibleDates.indexOf(formatLocalDate(AppState.resizing.originalStart)); 
+            const endIdx = AppState.resizing.visibleDates.indexOf(formatLocalDate(AppState.resizing.originalEnd)); 
+            const newStart = AppState.resizing.visibleDates[AppState.resizing.type === "start" ? Math.min(hoverIdx, endIdx) : startIdx]; 
+            const newEnd = AppState.resizing.visibleDates[AppState.resizing.type === "end" ? Math.max(hoverIdx, startIdx) : endIdx]; 
+            if (newStart !== ev.startDate || newEnd !== ev.endDate) { 
+                ev.startDate = newStart; 
+                ev.endDate = newEnd; 
+                ev.lastModifiedBy = AppState.userId; // Track modifier
+                ev.lastModifiedAt = new Date().toISOString();
+                try { 
+                    await addOrUpdateEventInDB(ev); 
+                    // No broadcast needed
+                    showMessage("Event Updated", `${ev.name}: ${newStart} → ${newEnd}`, "bg-green-600"); 
+                } catch (err) { 
+                    showMessage("Error", "Could not update event duration.", "bg-red-500"); 
+                } 
+            } 
+            AppState.resizing = { event: null, visibleDates: [] }; 
+        }
+
+        function addTagToUI(tag) { if (!tag || document.querySelector(`.custom-tag[data-tag="${tag}"]`)) return; document.getElementById('customTagsContainer').innerHTML += `<span class="custom-tag bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-1 rounded-full inline-flex items-center" data-tag="${tag}">${tag}<button type="button" class="ml-1.5 text-blue-500 hover:text-blue-700" onclick="this.parentElement.remove()">&times;</button></span>`; }
+        function setActiveColor(color) { document.getElementById('eventColor').value = color; document.querySelectorAll('.color-swatch').forEach(swatch => swatch.classList.toggle('selected', swatch.dataset.color === color)); const customSwatch = document.getElementById('custom-color-swatch'); const isPreset = PRESET_COLORS.includes(color); if (!isPreset) { customSwatch.style.backgroundColor = color; customSwatch.classList.add('selected'); } else { customSwatch.style.backgroundColor = ''; } }
+        function openAgendaView(dateStr) {
+            if (!document.body.classList.contains('sidebar-open')) {
+                document.body.classList.add('sidebar-open');
+                document.getElementById('sidebarToggleIconOpen').classList.add('hidden');
+                document.getElementById('sidebarToggleIconClose').classList.remove('hidden');
+            }
+            document.getElementById('actionsView').classList.add('hidden');
+            document.getElementById('agendaView').classList.remove('hidden');
+            const title = document.getElementById('agendaDateTitle'), container = document.getElementById('agendaTimelineContainer'), date = parseLocalDate(dateStr);
+            title.textContent = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+            
+            container.innerHTML = Array.from({length: 24}, (_, i) => `<div class="hour-marker flex border-t border-gray-200"><span class="text-xs text-gray-400 p-1 -mt-3 bg-white">${i.toString().padStart(2,'0')}:00</span></div>`).join('');
+            const eventsWrapper = document.createElement('div');
+            eventsWrapper.style.cssText = 'position: absolute; left: 4rem; top: 0; right: 0; bottom: 0;';
+            container.appendChild(eventsWrapper);
+
+            const events = getEventsForDate(date), hourHeight = 50;
+            const eventsByTime = events.reduce((acc, event) => { const time = event.startTime || '08:00'; if (!acc[time]) acc[time] = []; acc[time].push(event); return acc; }, {});
+
+            Object.values(eventsByTime).forEach(group => {
+                const groupCount = group.length, barWidth = 100 / groupCount;
+                group.forEach((event, index) => {
+                    const [hour, minute] = (event.startTime || '08:00').split(':').map(Number);
+                    const topPosition = (hour + (minute / 60)) * hourHeight;
+                    const textColor = getTextColorForBg(event.color);
+                    
+                    const eventBar = document.createElement('div');
+                    eventBar.className = 'agenda-event-bar p-2 rounded-lg flex flex-col justify-center cursor-pointer';
+                    eventBar.style.cssText = `background-color: ${event.color}; color: ${textColor}; top: ${topPosition}px; height: ${hourHeight}px; width: calc(${barWidth}% - 4px); left: ${index * barWidth}%; margin-left: 2px;`;
+                    let barHTML = `<p class="font-bold text-sm truncate">${event.name}</p><p class="text-xs">${event.startTime}</p>`;
+                    if (event.msTeamsLink) {
+                        barHTML += `<a href="${event.msTeamsLink}" target="_blank" rel="noopener noreferrer" class="absolute top-2 right-2 opacity-75 hover:opacity-100" onclick="event.stopPropagation()" title="Open MS Teams Link">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd" />
+                                        </svg>
+                                    </a>`;
+                    }
+                    eventBar.innerHTML = barHTML;
+                    eventBar.dataset.eventId = event.id;
+                    eventBar.classList.add('edit-event-btn');
+
+                    eventsWrapper.appendChild(eventBar);
+                });
+            });
+            const agendaContent = document.getElementById('agendaViewContent');
+            setTimeout(() => { agendaContent.scrollTop = 6 * hourHeight; }, 0);
+        }
+        function closeAgendaView() { document.getElementById('actionsView').classList.remove('hidden'); document.getElementById('agendaView').classList.add('hidden'); }
+
+        // --- App Initialization (Updated) ---
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const body = document.body;
+            const monthsInput = document.getElementById('monthsCount');
+            const fileInput = document.getElementById('fileInput');
+            
+            // Dark Mode Toggle Logic
+            const themeToggleBtn = document.getElementById('themeToggleBtn');
+            const themeIconLight = document.getElementById('themeIconLight');
+            const themeIconDark = document.getElementById('themeIconDark');
+
+            const themeCheck = () => {
+                const userTheme = localStorage.getItem('theme');
+                const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+                if (userTheme === 'dark' || (!userTheme && systemTheme)) {
+                    document.documentElement.classList.add('dark');
+                    if(themeIconLight) themeIconLight.classList.add('hidden');
+                    if(themeIconDark) themeIconDark.classList.remove('hidden');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    if(themeIconLight) themeIconLight.classList.remove('hidden');
+                    if(themeIconDark) themeIconDark.classList.add('hidden');
+                }
+            };
+
+            if(themeToggleBtn) {
+                themeToggleBtn.addEventListener('click', () => {
+                    if (document.documentElement.classList.contains('dark')) {
+                        document.documentElement.classList.remove('dark');
+                        localStorage.setItem('theme', 'light');
+                    } else {
+                        document.documentElement.classList.add('dark');
+                        localStorage.setItem('theme', 'dark');
+                    }
+                    themeCheck();
+                });
+            }
+            themeCheck();
+
+            // --- UI Setup (Unchanged from original) ---
+            const colorSelector = document.getElementById('color-selector');
+            PRESET_COLORS.forEach(color => { colorSelector.innerHTML += `<button type="button" class="color-swatch" data-color="${color}" style="background-color: ${color};"></button>`; });
+            colorSelector.innerHTML += `<div class="relative w-7 h-7"><button type="button" id="custom-color-swatch" class="color-swatch w-full h-full border-dashed border-gray-400" title="Custom color"></button><input type="color" id="custom-color-input" class="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"></div>`;
+            document.querySelectorAll('.color-swatch').forEach(swatch => swatch.addEventListener('click', e => setActiveColor(e.target.dataset.color)));
+            document.getElementById('custom-color-input').addEventListener('input', e => setActiveColor(e.target.value));
+
+            const presetTagsContainer = document.getElementById('presetTagsContainer');
+            PRESET_TAGS.forEach(tag => { const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'preset-tag-chip text-xs font-semibold px-2.5 py-1 rounded-full transition'; chip.textContent = tag; chip.dataset.tag = tag; presetTagsContainer.appendChild(chip); });
+            presetTagsContainer.addEventListener('click', (e) => { if(e.target.classList.contains('preset-tag-chip')) e.target.classList.toggle('active'); });
+
+            const durationDisplay = document.getElementById('durationDisplay'), durationInput = document.getElementById('durationInput');
+            durationDisplay.addEventListener('click', () => { durationDisplay.style.display = 'none'; durationInput.style.display = 'inline-block'; durationInput.value = parseInt(durationDisplay.textContent); durationInput.focus(); });
+            durationInput.addEventListener('blur', () => { durationDisplay.style.display = 'inline-block'; durationInput.style.display = 'none'; });
+            durationInput.addEventListener('change', () => { const startDate = document.getElementById('startDate').value; const duration = parseInt(durationInput.value); if(startDate && duration > 0) { document.getElementById('endDate').value = formatLocalDate(addDays(parseLocalDate(startDate), duration, document.getElementById('includeWeekends').checked)); updateDurationDisplay(); } });
+
+            const notesHistorySelect = document.getElementById('notesHistorySelect'), notesHistoryView = document.getElementById('notesHistoryView');
+            notesHistorySelect.addEventListener('change', (e) => { const event = AppState.events.find(ev => ev.id === document.getElementById('eventId').value); if (!event || !event.notes) return; const noteIndex = e.target.value; if (noteIndex === '') { notesHistoryView.classList.add('hidden'); } else { notesHistoryView.textContent = event.notes[noteIndex].content; notesHistoryView.classList.remove('hidden'); } });
+            
+            document.getElementById('clearNotesHistoryBtn').addEventListener('click', () => {
+                const eventId = document.getElementById('eventId').value;
+                if (!eventId) return; 
+                const event = AppState.events.find(ev => ev.id === eventId);
+                if (!event || !event.notes || event.notes.length <= 1) { showMessage('Info', 'No history to clear.', 'bg-blue-500'); return; }
+                openConfirmationModal("Clear History?", "This will permanently delete all previous versions of notes. Are you sure?", async () => {
+                    const currentNoteText = document.getElementById('eventNotes').value.trim();
+                    const updatedNotes = [{ timestamp: new Date().toISOString(), content: currentNoteText, userId: AppState.userId }];
+                    const updatedEvent = {...event, notes: updatedNotes, lastModifiedBy: AppState.userId, lastModifiedAt: new Date().toISOString()};
+                    try {
+                        await addOrUpdateEventInDB(updatedEvent);
+                        // onSnapshot will update the local AppState
+                        updateNotesHistoryUI(updatedEvent); // Update modal UI immediately
+                        showMessage("Success", "Notes history has been cleared.", "bg-green-600");
+                    } catch (err) {
+                        console.error("Clear History Error:", err);
+                        showMessage("Error", "Could not clear notes history.", "bg-red-500");
+                    }
+                });
+            });
+
+            document.getElementById('applyDuplicateBtnModal').addEventListener('click', () => {
+                const source = AppState.events.find(ev => ev.id === document.getElementById('duplicateIdInputModal').value.trim());
+                if (source) {
+                    document.getElementById('eventName').value = source.name;
+                    document.getElementById('includeWeekends').checked = source.includeWeekends;
+                    document.getElementById('msTeamsLink').value = source.msTeamsLink || '';
+                    const latestNote = source.notes?.[source.notes.length - 1]?.content || '';
+                    document.getElementById('eventNotes').value = latestNote;
+                    populateTagsForModal(source.tags);
+                    setActiveColor(source.color);
+                    showMessage('Success', 'Event details applied.', 'bg-green-600');
+                    closeDuplicateModal();
+                    document.getElementById('duplicateIdInputModal').value = '';
+                } else { showMessage('Error', 'Event ID not found.', 'bg-red-500'); }
+            });
+
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            sidebarToggle.addEventListener('click', () => { body.classList.toggle('sidebar-open'); document.getElementById('sidebarToggleIconOpen').classList.toggle('hidden'); document.getElementById('sidebarToggleIconClose').classList.toggle('hidden'); });
+            document.getElementById('sidebar').addEventListener('transitionend', () => renderContinuousEventBars());
+            const dataMenuBtn = document.getElementById('dataMenuBtn');
+            const dataMenu = document.getElementById('dataMenu');
+            dataMenuBtn.addEventListener('click', (e) => { e.stopPropagation(); dataMenu.classList.toggle('menu-open'); });
+            document.addEventListener('click', (e) => { if (!dataMenu.contains(e.target) && !dataMenuBtn.contains(e.target)) dataMenu.classList.remove('menu-open'); });
+            document.getElementById('monthsUp').addEventListener('click', () => { monthsInput.stepUp(); window.setMonthsToDisplay(monthsInput.value); });
+            document.getElementById('monthsDown').addEventListener('click', () => { monthsInput.stepDown(); window.setMonthsToDisplay(monthsInput.value); });
+            
+            const debouncedRenderOnResize = debounce(renderContinuousEventBars, 250);
+            window.addEventListener('resize', debouncedRenderOnResize);
+
+            // --- Global Event Listeners (Unchanged) ---
+            body.addEventListener('click', (e) => { const target = e.target; const closest = (s) => target.closest(s); if (closest('#prevMonthBtn')) window.prevMonth(); else if (closest('#nextMonthBtn')) window.nextMonth(); else if (closest('#todayBtn')) window.jumpToToday(); else if (closest('#addEventBtn')) window.openCreateEventModal(); else if (closest('#exportBtn')) window.exportEvents(); else if (closest('#importBtn')) fileInput.click(); else if (closest('#importTemplatesBtn')) window.importTemplates(); else if (closest('#resetDataBtn')) window.resetAllEvents(); else if (closest('#deleteEventButton')) window.deleteEvent(); else if (closest('[data-action="close-modal"]') || (closest('.modal') && !closest('.modal-content') && !closest('#duplicateModal'))) { if (closest('#eventModal')) window.closeEventModal(); if (closest('#confirmModal')) window.closeConfirmationModal(); } else if (closest('[data-action="close-duplicate-modal"]')) { closeDuplicateModal(); } else if (closest('[data-action="close-agenda-view"]')) { closeAgendaView(); } else if (closest('[data-action="open-agenda"]')) { if (!body.classList.contains('sidebar-open')) { body.classList.add('sidebar-open'); document.getElementById('sidebarToggleIconOpen').classList.add('hidden'); document.getElementById('sidebarToggleIconClose').classList.remove('hidden'); } const dateStr = closest('.day-cell').dataset.date; openAgendaView(dateStr); } else if (closest('#confirmOkBtn')) { if (typeof AppState.onConfirmCallback === 'function') AppState.onConfirmCallback(); closeConfirmationModal(); } else if (closest('.edit-event-btn') || closest('.calendar-edit-btn')) { const id = closest('[data-event-id]').dataset.eventId; const event = AppState.events.find(ev => ev.id === id); if (event) window.openEditEventModal(event); } else if (closest('[data-action="highlight-event"]')) { window.toggleEventHighlight(closest('[data-event-id]').dataset.eventId, closest('[data-event-id]')); } else if (closest('#addTagBtn')) { const input = document.getElementById('newTagInput'); if (input.value.trim()) addTagToUI(input.value.trim()); input.value = ''; } else if (closest('#copyEventIdBtn')) { navigator.clipboard.writeText(document.getElementById('eventIdText').textContent).then(() => showMessage('Copied!', 'Event ID copied.', 'bg-green-600')); } else if (closest('[data-action="quick-add"]')) { const cell = closest('.day-cell'); if(cell) window.quickAddEvent(cell.dataset.date); } else if (closest('.tag-filter-btn')) { const btn = closest('.tag-filter-btn'), tag = btn.dataset.tag; if (AppState.activeTags.has(tag)) AppState.activeTags.delete(tag); else AppState.activeTags.add(tag); btn.classList.toggle('active'); filterAndRenderEventList(); } });
+            
+            body.addEventListener('change', (e) => { 
+                const id = e.target.id; 
+                if (id === 'monthsCount') window.setMonthsToDisplay(e.target.value); 
+                else if (id === 'fileInput') { 
+                    const file = e.target.files[0]; if (!file) return; 
+                    const reader = new FileReader(); 
+                    reader.onload = async (re) => { 
+                        try { 
+                            const data = JSON.parse(re.target.result); 
+                            if (!Array.isArray(data)) throw new Error(); 
+                            const count = await bulkImportEventsToDB(data); 
+                            showMessage('Import Success', `${count} events imported.`, 'bg-green-600'); 
+                            // No broadcast needed
+                        } catch { 
+                            showMessage('File Error', 'Invalid JSON.', 'bg-red-500'); 
+                        } finally { 
+                            e.target.value = ''; 
+                        } 
+                    }; 
+                    reader.readAsText(file); 
+                } else if (id === 'templateSelect') { 
+                    applyTemplateAndRecalculate(); 
+                } else if (id === 'startDate' || id === 'endDate' || id === 'includeWeekends' || id === 'startTime') { 
+                    updateDurationDisplay(); 
+                }
+            });
+
+            document.getElementById('searchBar').addEventListener('input', debounce(filterAndRenderEventList, 250));
+            document.getElementById('eventForm').addEventListener('submit', window.saveEvent);
+            
+            const calendarContainer = document.getElementById('calendarContainer'); 
+            if (calendarContainer) { 
+                let dragCell = null; 
+                calendarContainer.addEventListener('dragstart', (e) => { const bar = e.target.closest('.event-bar'); if (bar) { const event = AppState.events.find(ev => ev.id === bar.dataset.eventId); if (event) window.handleDragStart(e, event); } }); 
+                calendarContainer.addEventListener('mousedown', (e) => { const handle = e.target.closest('.resize-handle'); if (handle) { const event = AppState.events.find(ev => ev.id === handle.closest('.event-bar').dataset.eventId); if (event) window.startResize(e, event, handle.dataset.resizeType); } }); 
+                calendarContainer.addEventListener('dragover', (e) => { const cell = e.target.closest('.day-cell'); if (cell) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (cell !== dragCell) { dragCell?.classList.remove('drag-over'); cell.classList.add('drag-over'); dragCell = cell; } } }); 
+                calendarContainer.addEventListener('dragleave', (e) => { if (dragCell && !calendarContainer.contains(e.relatedTarget)) { dragCell.classList.remove('drag-over'); dragCell = null; } }); 
+                calendarContainer.addEventListener('drop', (e) => { if (dragCell) { window.handleDrop(e, dragCell.dataset.date, dragCell); dragCell = null; } }); 
+            }
+        });
+        
+        // Start the Firebase initialization on window load
+        window.onload = initializeCloudDB;
+    </script>
+</body>
+</html>
