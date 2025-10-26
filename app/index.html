@@ -516,8 +516,6 @@ async function initializeCloudDB() {
 
         onAuthStateChanged(fbAuth, async (user) => {
             if (user) {
-                console.log('User object:', user); // Log the entire user object
-                console.log('User email:', user.email);
                 console.log('User is signed in:', user.uid);
                 AppState.userId = user.uid;
                 document.getElementById('currentUserId').textContent = user.uid;
