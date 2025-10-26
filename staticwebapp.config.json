@@ -4,5 +4,8 @@
       "route": "/*",
       "allowedRoles": ["authenticated"]
     }
-  ]
+  ],
+  "platform": {
+    "apiRuntime": "node:20"
+  }
 }
