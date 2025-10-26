@@ -515,34 +515,35 @@ async function initializeCloudDB() {
         setLogLevel('Debug'); // Enable Firestore logging
 
         onAuthStateChanged(fbAuth, async (user) => {
-    if (user) {
-        console.log('User object:', user); // Log the entire user object
-        console.log('User is signed in:', user.uid);
-        AppState.userId = user.uid;
-        document.getElementById('currentUserId').textContent = user.uid;
+            if (user) {
+                console.log('User object:', user); // Log the entire user object
+                console.log('User email:', user.email);
+                console.log('User is signed in:', user.uid);
+                AppState.userId = user.uid;
+                document.getElementById('currentUserId').textContent = user.uid;
 
-        const collectionPath = `artifacts/${appId}/public/data/events`;
-        console.log('Using collection path:', collectionPath);
-        eventsCollectionRef = collection(fbDb, collectionPath);
+                const collectionPath = `artifacts/${appId}/public/data/events`;
+                console.log('Using collection path:', collectionPath);
+                eventsCollectionRef = collection(fbDb, collectionPath);
 
-        setupFirestoreListener();
-    } else {
-        console.log('No user is signed in. Attempting to sign in...');
-        AppState.userId = null;
-        document.getElementById('currentUserId').textContent = 'authenticating...';
-        try {
-            if (initialAuthToken) {
-                await signInWithCustomToken(fbAuth, initialAuthToken);
+                setupFirestoreListener();
             } else {
-                await signInAnonymously(fbAuth);
+                console.log('No user is signed in. Attempting to sign in...');
+                AppState.userId = null;
+                document.getElementById('currentUserId').textContent = 'authenticating...';
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(fbAuth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(fbAuth);
+                    }
+                } catch (authError) {
+                    console.error('Error during sign-in:', authError);
+                    showMessage('Auth Error', 'Could not authenticate user.', 'bg-red-500');
+                    document.getElementById('loadingEvents').textContent = 'Error: Authentication failed.';
+                }
             }
-        } catch (authError) {
-            console.error('Error during sign-in:', authError);
-            showMessage('Auth Error', 'Could not authenticate user.', 'bg-red-500');
-            document.getElementById('loadingEvents').textContent = 'Error: Authentication failed.';
-        }
-    }
-});
+        });
 
     } catch (err) {
         console.error('Configuration or Initialization Error:', err);
