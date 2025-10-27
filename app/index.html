@@ -487,7 +487,7 @@
  */
 async function initializeCloudDB() {
     try {
-        // 1. Fetch the configuration from our new serverless API
+        // 1. Fetch the configuration and custom token from our serverless API
         const response = await fetch('/api/config');
         if (!response.ok) {
             throw new Error(`Failed to fetch config: ${response.statusText}`);
@@ -495,8 +495,7 @@ async function initializeCloudDB() {
         const serverConfig = await response.json();
 
         const firebaseConfig = serverConfig.firebaseConfig;
-        const appId = serverConfig.appId;
-        const initialAuthToken = serverConfig.initialAuthToken;
+        const customToken = serverConfig.customToken; // Get the custom token
 
         // 2. Check if the fetched config is valid
         if (!firebaseConfig || !firebaseConfig.projectId) {
@@ -512,35 +511,26 @@ async function initializeCloudDB() {
         AppState.fbDb = fbDb;
         AppState.fbAuth = fbAuth;
 
-        setLogLevel('Debug'); // Enable Firestore logging
-
         onAuthStateChanged(fbAuth, async (user) => {
             if (user) {
-                console.log('User object:', user);
-                console.log('User email:', user.email);
                 console.log('User is signed in:', user.uid);
                 AppState.userId = user.uid;
                 document.getElementById('currentUserId').textContent = user.uid;
 
-                const collectionPath = `artifacts/${appId}/public/data/events`;
+                // Use a user-specific collection path
+                const collectionPath = `users/${user.uid}/events`;
                 console.log('Using collection path:', collectionPath);
                 eventsCollectionRef = collection(fbDb, collectionPath);
 
                 setupFirestoreListener();
             } else {
-                console.log('No user is signed in. Attempting to sign in...');
-                AppState.userId = null;
-                document.getElementById('currentUserId').textContent = 'authenticating...';
+                console.log('No user is signed in. Attempting to sign in with custom token...');
                 try {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(fbAuth, initialAuthToken);
-                    } else {
-                        await signInAnonymously(fbAuth);
-                    }
+                    // Sign in with the custom token
+                    await signInWithCustomToken(fbAuth, customToken);
                 } catch (authError) {
                     console.error('Error during sign-in:', authError);
                     showMessage('Auth Error', 'Could not authenticate user.', 'bg-red-500');
-                    document.getElementById('loadingEvents').textContent = 'Error: Authentication failed.';
                 }
             }
         });
@@ -548,7 +538,6 @@ async function initializeCloudDB() {
     } catch (err) {
         console.error('Configuration or Initialization Error:', err);
         showMessage('Config Error', err.message, 'bg-red-500');
-        document.getElementById('loadingEvents').textContent = `Error: ${err.message}`;
     }
 }
 
