@@ -165,18 +165,19 @@
         <header class="flex justify-between items-center mb-6">
             <div class="flex items-center space-x-2">
                 <button id="prevMonthBtn" class="p-2 rounded-full hover:bg-gray-100 transition">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <button id="todayBtn" class="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-lg transition">Today</button>
                 <button id="nextMonthBtn" class="p-2 rounded-full hover:bg-gray-100 transition">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
                 </button>
             </div>
             <h2 id="currentMonthYear" class="text-3xl font-bold text-gray-800 text-center">Calendar View</h2>
+            <div class="flex items-center gap-2">
+                <select id="calendarSelector" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition"></select>
+                <button id="createCalendarBtn" class="px-3 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold text-sm rounded-lg" title="Create New Calendar">+</button>
+                <button id="shareCalendarBtn" class="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white font-semibold text-sm rounded-lg" title="Share Calendar">Share</button>
+            </div>
         </header>
         <div id="calendarContainer" class="space-y-8"></div>
     </main>
@@ -393,6 +394,24 @@
         </div>
     </div>
 
+    <div id="shareModal" class="modal fixed inset-0 flex items-center justify-center p-4 closed" style="z-index: 103;">
+        <div class="modal-content bg-white w-full max-w-md rounded-xl p-6 shadow-2xl">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Share Calendar</h3>
+            <p id="shareCalendarName" class="text-gray-600 mb-4 text-sm"></p>
+            <div class="space-y-2">
+                <input type="email" id="shareUserEmail" placeholder="Enter user's email to invite..." class="w-full p-2 border border-gray-300 rounded-lg text-sm">
+                <select id="shareUserRole" class="w-full p-2 border border-gray-300 rounded-lg text-sm">
+                    <option value="viewer">Viewer</option>
+                    <option value="editor">Editor</option>
+                </select>
+            </div>
+            <div class="flex justify-end mt-6 space-x-3">
+                <button type="button" data-action="close-share-modal" class="px-5 py-2.5 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition text-sm">Cancel</button>
+                <button type="button" id="addUserToCalendarBtn" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-lg">Add User</button>
+            </div>
+        </div>
+    </div>
+
     <div id="messageBox" class="fixed p-4 bg-indigo-600 text-white rounded-lg shadow-xl hidden">
         <div id="messageText" class="font-medium"></div>
         <div id="messageSubText" class="text-sm opacity-80 mt-1"></div>
@@ -409,25 +428,8 @@
     <script type="module">
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { 
-            getAuth, 
-            signInAnonymously, 
-            signInWithCustomToken, 
-            onAuthStateChanged 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { 
-            getFirestore, 
-            doc, 
-            getDoc, 
-            setDoc, 
-            deleteDoc, 
-            onSnapshot, 
-            collection, 
-            query, 
-            writeBatch,
-            getDocs,
-            setLogLevel
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, writeBatch, getDocs, where, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- App Constants ---
         const CALENDAR_CONSTANTS = { RENDER_DELAY: 50, BASE_CELL_HEIGHT: 80, EVENT_ROW_HEIGHT: 20, DATE_LABEL_HEIGHT: 25, EVENT_SLOT_HEIGHT: 24, EVENT_SIDE_MARGINS: 5 };
@@ -447,13 +449,13 @@
 
         // --- App State ---
         const AppState = { 
-            // dbInstance: null, // Removed: No longer using IndexedDB
             fbApp: null,
             fbAuth: null,
             fbDb: null,
             userId: null,
-            appId: appId,
             events: [], 
+            calendars: [],
+            activeCalendarId: null,
             templates: [], 
             monthsToDisplay: 3, 
             currentDate: new Date(), 
@@ -480,160 +482,132 @@
 
         // --- Firestore (NEW) & Data Logic (Replaced) ---
 
- /**
- * Replaces: openDB, tx
- * Initializes the Firebase App, Auth, and Firestore services.
- * Fetches config from the API, then sets up the auth listener.
- */
 async function initializeCloudDB() {
-    try {
-        // 1. Fetch the configuration and custom token from our serverless API
-        const response = await fetch('/api/config');
-        if (!response.ok) {
-            throw new Error(`Failed to fetch config: ${response.statusText}`);
-        }
-        const serverConfig = await response.json();
+            try {
+                // Fetch config from the API
+                const response = await fetch('/api/config');
+                if (!response.ok) throw new Error(`Failed to fetch config: ${response.statusText}`);
+                const serverConfig = await response.json();
 
-        const firebaseConfig = serverConfig.firebaseConfig;
-        const customToken = serverConfig.customToken; // Get the custom token
+                // Initialize Firebase
+                fbApp = initializeApp(serverConfig.firebaseConfig);
+                fbDb = getFirestore(fbApp);
+                fbAuth = getAuth(fbApp);
+                Object.assign(AppState, { fbApp, fbDb, fbAuth });
 
-        // 2. Check if the fetched config is valid
-        if (!firebaseConfig || !firebaseConfig.projectId) {
-            throw new Error('Fetched Firebase config is invalid or missing.');
-        }
+                // MODIFIED: Auth state change now fetches calendars first
+                onAuthStateChanged(fbAuth, async (user) => {
+                    if (user) {
+                        console.log('User is signed in:', user.uid);
+                        AppState.userId = user.uid;
+                        document.getElementById('currentUserId').textContent = user.uid;
+                        
+                        // Fetch calendars this user is a member of
+                        await fetchUserCalendars();
+                        renderCalendarSelector();
 
-        // 3. Initialize Firebase with the fetched config
-        fbApp = initializeApp(firebaseConfig);
-        fbDb = getFirestore(fbApp);
-        fbAuth = getAuth(fbApp);
+                        // If user has calendars, load the first one. Otherwise, prompt to create one.
+                        if (AppState.calendars.length > 0) {
+                            AppState.activeCalendarId = AppState.calendars[0].id;
+                            document.getElementById('calendarSelector').value = AppState.activeCalendarId;
+                            setupFirestoreListener();
+                        } else {
+                            document.getElementById('eventListContainer').innerHTML = '<p class="text-gray-500 text-sm italic p-4 text-center">No calendars found. Create one to get started!</p>';
+                            renderCalendar();
+                        }
 
-        AppState.fbApp = fbApp;
-        AppState.fbDb = fbDb;
-        AppState.fbAuth = fbAuth;
+                    } else {
+                        console.log('No user is signed in. Signing in with custom token...');
+                        try {
+                            await signInWithCustomToken(fbAuth, serverConfig.customToken);
+                        } catch (authError) {
+                            console.error('Error during sign-in:', authError);
+                            showMessage('Auth Error', 'Could not authenticate user.', 'bg-red-500');
+                        }
+                    }
+                });
 
-        onAuthStateChanged(fbAuth, async (user) => {
-            if (user) {
-                console.log('User is signed in:', user.uid);
-                AppState.userId = user.uid;
-                document.getElementById('currentUserId').textContent = user.uid;
-
-                // Use a user-specific collection path
-                const collectionPath = `users/${user.uid}/events`;
-                console.log('Using collection path:', collectionPath);
-                eventsCollectionRef = collection(fbDb, collectionPath);
-
-                setupFirestoreListener();
-            } else {
-                console.log('No user is signed in. Attempting to sign in with custom token...');
-                try {
-                    // Sign in with the custom token
-                    await signInWithCustomToken(fbAuth, customToken);
-                } catch (authError) {
-                    console.error('Error during sign-in:', authError);
-                    showMessage('Auth Error', 'Could not authenticate user.', 'bg-red-500');
-                }
+            } catch (err) {
+                console.error('Configuration or Initialization Error:', err);
+                showMessage('Config Error', err.message, 'bg-red-500');
             }
-        });
+        }
 
-    } catch (err) {
-        console.error('Configuration or Initialization Error:', err);
-        showMessage('Config Error', err.message, 'bg-red-500');
-    }
-}
+        // NEW: Function to fetch user's calendars
+        async function fetchUserCalendars() {
+            if (!AppState.userId) return;
+            const calendarsRef = collection(fbDb, 'calendars');
+            // Query for calendars where the user's ID is a key in the 'members' map
+            const q = query(calendarsRef, where(`members.${AppState.userId}`, 'in', ['owner', 'editor', 'viewer']));
+            
+            const snapshot = await getDocs(q);
+            AppState.calendars = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            console.log(`Found ${AppState.calendars.length} calendars for user.`);
+        }
 
-        /**
-         * Replaces: getAllEventsFromDB, setupEventListenerAndLoad
-         * Attaches a real-time snapshot listener to the events collection.
-         * This function is called once the user is authenticated.
-         */
+        // MODIFIED: Listener is now set up based on the active calendar
         function setupFirestoreListener() {
-            if (!eventsCollectionRef) {
-                console.error('Cannot set up listener: eventsCollectionRef is not set.');
+            if (!AppState.activeCalendarId) {
+                console.error('Cannot set up listener: no active calendar selected.');
+                AppState.events = [];
+                renderCalendar();
+                filterAndRenderEventList();
                 return;
             }
 
-            // Unsubscribe from any previous listener
             unsubscribeFromEvents();
 
-            const q = query(eventsCollectionRef); // No ordering needed here, will sort in-memory
+            // Set the collection ref to the subcollection of the active calendar
+            eventsCollectionRef = collection(fbDb, `calendars/${AppState.activeCalendarId}/events`);
+            const q = query(eventsCollectionRef);
             
             document.getElementById('loadingEvents').textContent = 'Loading events...';
 
             unsubscribeFromEvents = onSnapshot(q, (snapshot) => {
-                console.log(`Received ${snapshot.size} events from Firestore.`);
-                const allEvents = [];
-                snapshot.forEach((doc) => {
-                    allEvents.push(doc.data());
-                });
+                console.log(`Received ${snapshot.size} events from calendar ${AppState.activeCalendarId}.`);
+                const allEvents = snapshot.docs.map(doc => doc.data());
                 
-                // Process and sort events, just like the old logic
                 AppState.events = allEvents.map(e => ({ 
-                    ...e, 
-                    id: e.id, // Ensure ID is present
-                    endDate: e.endDate || e.startDate, 
-                    startTime: e.startTime || '08:00', 
-                    color: e.color || '#4f46e5', 
-                    includeWeekends: !!e.includeWeekends, 
-                    tags: Array.isArray(e.tags) ? e.tags : [], 
-                    notes: Array.isArray(e.notes) ? e.notes : [], 
-                    msTeamsLink: e.msTeamsLink || '', 
-                    userId: e.userId || 'unknown', // Track which user created it
-                    createdAt: e.createdAt || new Date().toISOString() 
+                    ...e, id: e.id, endDate: e.endDate || e.startDate, startTime: e.startTime || '08:00', 
+                    color: e.color || '#4f46e5', includeWeekends: !!e.includeWeekends, tags: Array.isArray(e.tags) ? e.tags : [], 
+                    notes: Array.isArray(e.notes) ? e.notes : [], msTeamsLink: e.msTeamsLink || '', 
+                    userId: e.userId || 'unknown', createdAt: e.createdAt || new Date().toISOString() 
                 })).sort((a,b) => a.startDate.localeCompare(b.startDate) || a.startTime.localeCompare(b.startTime));
                 
-                // Re-render the UI with the new data
                 renderCalendar(); 
                 renderTagFilters(); 
                 filterAndRenderEventList();
                 
                 if (AppState.events.length === 0 && document.getElementById('searchBar').value === '' && AppState.activeTags.size === 0) {
-                     document.getElementById('eventListContainer').innerHTML = '<p class="text-gray-500 text-sm italic p-4 text-center">No events found. Add one to get started!</p>';
+                     document.getElementById('eventListContainer').innerHTML = '<p class="text-gray-500 text-sm italic p-4 text-center">No events in this calendar. Add one!</p>';
                 }
-
             }, (error) => {
                 console.error('Error listening to Firestore:', error);
                 showMessage('Connection Error', 'Failed to load real-time data.', 'bg-red-500');
-                document.getElementById('loadingEvents').textContent = 'Error: Connection failed.';
             });
         }
 
-        /**
-         * Replaces: addOrUpdateEventInDB
-         * Saves a single event document to Firestore using setDoc.
-         */
+        // MODIFIED: All DB functions now need to use the dynamic `eventsCollectionRef`
         async function addOrUpdateEventInDB(evt) {
-            if (!eventsCollectionRef) {
-                console.error('Cannot save event: Firestore is not ready.');
-                throw new Error('Database not initialized.');
-            }
-            // Use the event's ID to create a document reference
+            if (!eventsCollectionRef) throw new Error('Database not initialized for the active calendar.');
             const eventDocRef = doc(eventsCollectionRef, evt.id);
-            // setDoc will create or overwrite the document
             await setDoc(eventDocRef, evt);
             return evt.id;
         }
 
-        /**
-         * Replaces: deleteEventFromDB
-         * Deletes a single event document from Firestore.
-         */
         async function deleteEventFromDB(id) {
-            if (!eventsCollectionRef) {
-                console.error('Cannot delete event: Firestore is not ready.');
-                throw new Error('Database not initialized.');
-            }
+            if (!eventsCollectionRef) throw new Error('Database not initialized.');
             const eventDocRef = doc(eventsCollectionRef, id);
             await deleteDoc(eventDocRef);
         }
 
         /**
-         * Replaces: bulkImportEventsToDB
-         * Imports multiple events using a Firestore Write Batch for efficiency.
+         * Imports multiple events into the currently active calendar using a Firestore Write Batch.
          */
         async function bulkImportEventsToDB(eventsList = []) {
             if (!eventsCollectionRef) {
-                console.error('Cannot import events: Firestore is not ready.');
-                throw new Error('Database not initialized.');
+                console.error('Cannot import events: No active calendar selected.');
+                throw new Error('No active calendar is selected.');
             }
 
             const batch = writeBatch(fbDb);
@@ -642,6 +616,7 @@ async function initializeCloudDB() {
 
             eventsList.forEach(raw => {
                 const newId = raw.id || safeUUID();
+                // The eventDocRef is now correctly scoped to the active calendar's subcollection
                 const eventDocRef = doc(eventsCollectionRef, newId);
                 const eventData = { 
                     id: newId, 
@@ -651,11 +626,11 @@ async function initializeCloudDB() {
                     endDate: raw.endDate || raw.startDate, 
                     color: raw.color || '#4f46e5', 
                     includeWeekends: raw.includeWeekends === true, 
-                    userId: raw.userId || currentUserId, // Preserve original user if available
+                    userId: currentUserId, // The importer is the creator in this context
                     tags: Array.isArray(raw.tags) ? raw.tags : [], 
                     notes: Array.isArray(raw.notes) ? raw.notes : [], 
                     msTeamsLink: raw.msTeamsLink || '', 
-                    createdAt: raw.createdAt || new Date().toISOString() 
+                    createdAt: new Date().toISOString() 
                 };
                 batch.set(eventDocRef, eventData);
                 count++;
@@ -666,14 +641,12 @@ async function initializeCloudDB() {
         }
         
         /**
-         * Replaces: deleteAllEventsFromDB
-         * Fetches all event docs and deletes them in a batch.
-         * This is a multi-user app, so this is a "delete all" for everyone.
+         * Deletes all event documents from the currently active calendar.
          */
         async function deleteAllEventsFromDB() {
             if (!eventsCollectionRef) {
-                console.error('Cannot reset events: Firestore is not ready.');
-                throw new Error('Database not initialized.');
+                console.error('Cannot delete events: No active calendar selected.');
+                throw new Error('No active calendar is selected.');
             }
             
             const snapshot = await getDocs(eventsCollectionRef);
@@ -687,15 +660,8 @@ async function initializeCloudDB() {
             });
             
             await batch.commit();
-            console.log(`Deleted ${snapshot.size} events.`);
+            console.log(`Deleted ${snapshot.size} events from calendar ${AppState.activeCalendarId}.`);
         }
-
-        // --- BroadcastChannel / Storage Sync (REMOVED) ---
-        // const bc = ('BroadcastChannel' in window) ? new BroadcastChannel(CHANNEL_NAME) : null; // Removed
-        // function broadcastChange(payload = {}) { ... } // Removed
-        // if (bc) { bc.onmessage = ... } // Removed
-        // window.addEventListener('storage', (e) => { ... }); // Removed
-        // `onSnapshot` handles all real-time synchronization.
 
         // --- Calendar Logic (Mostly Unchanged) ---
 		function getNextBusinessDay(date) { const d = new Date(date.getTime()); let day = d.getDay(); if (day === 6) d.setDate(d.getDate() + 2); else if (day === 0) d.setDate(d.getDate() + 1); d.setHours(0, 0, 0, 0); return d; }
@@ -965,13 +931,21 @@ async function initializeCloudDB() {
         };
         
         window.resetAllEvents = function() { 
-            openConfirmationModal('Confirm Reset', 'This will delete ALL events for ALL users. Are you sure?', async () => { 
+            const activeCalendar = AppState.calendars.find(c => c.id === AppState.activeCalendarId);
+            if (!activeCalendar) {
+                showMessage('Action Failed', 'Please select a calendar first.', 'bg-red-500');
+                return;
+            }
+
+            const confirmText = `This will delete ALL events in the "${activeCalendar.name}" calendar. This action cannot be undone. Are you sure?`;
+
+            openConfirmationModal('Confirm Reset', confirmText, async () => { 
                 try { 
                     await deleteAllEventsFromDB(); 
-                    // No AppState clear needed, onSnapshot will update
-                    showMessage('Reset Complete', 'All events removed.', 'bg-red-600'); 
+                    // onSnapshot will automatically update the UI to show an empty calendar
+                    showMessage('Reset Complete', `All events removed from "${activeCalendar.name}".`, 'bg-red-600'); 
                 } catch (err) { 
-                    showMessage('Reset Failed', 'Could not delete events.', 'bg-red-500'); 
+                    showMessage('Reset Failed', 'Could not delete events from the calendar.', 'bg-red-500'); 
                 } 
             }); 
         };
@@ -1106,6 +1080,99 @@ async function initializeCloudDB() {
         }
         function closeAgendaView() { document.getElementById('actionsView').classList.remove('hidden'); document.getElementById('agendaView').classList.add('hidden'); }
 
+        // --- NEW: Calendar Management Functions ---
+        function renderCalendarSelector() {
+            const selector = document.getElementById('calendarSelector');
+            selector.innerHTML = AppState.calendars.map(cal => `<option value="${cal.id}">${cal.name}</option>`).join('');
+            if (AppState.activeCalendarId) {
+                selector.value = AppState.activeCalendarId;
+            }
+        }
+
+        function handleCalendarChange(e) {
+            const newCalendarId = e.target.value;
+            if (newCalendarId && newCalendarId !== AppState.activeCalendarId) {
+                console.log(`Switching to calendar: ${newCalendarId}`);
+                AppState.activeCalendarId = newCalendarId;
+                // Reload events for the newly selected calendar
+                setupFirestoreListener();
+            }
+        }
+
+        async function createNewCalendar() {
+            const calendarName = prompt("Enter a name for the new calendar:", "My New Calendar");
+            if (!calendarName || !AppState.userId) return;
+
+            try {
+                const calendarsRef = collection(fbDb, 'calendars');
+                await addDoc(calendarsRef, {
+                    name: calendarName,
+                    owner: AppState.userId,
+                    members: {
+                        [AppState.userId]: 'owner'
+                    }
+                });
+                showMessage('Success', `Calendar "${calendarName}" created.`, 'bg-green-600');
+                // Refresh the calendar list
+                await fetchUserCalendars();
+                renderCalendarSelector();
+                // Switch to the new calendar
+                const newCal = AppState.calendars.find(c => c.name === calendarName);
+                if (newCal) {
+                    AppState.activeCalendarId = newCal.id;
+                    document.getElementById('calendarSelector').value = AppState.activeCalendarId;
+                    setupFirestoreListener();
+                }
+            } catch (err) {
+                console.error("Error creating calendar:", err);
+                showMessage('Error', 'Failed to create calendar.', 'bg-red-500');
+            }
+        }
+        
+        function openShareModal() {
+            const activeCalendar = AppState.calendars.find(c => c.id === AppState.activeCalendarId);
+            if (!activeCalendar) {
+                showMessage('Error', 'No active calendar selected.', 'bg-red-500');
+                return;
+            }
+            // You must be the owner to share
+            if (activeCalendar.owner !== AppState.userId) {
+                showMessage('Permission Denied', 'Only the calendar owner can share it.', 'bg-orange-500');
+                return;
+            }
+            document.getElementById('shareCalendarName').textContent = `Sharing "${activeCalendar.name}"`;
+            document.getElementById('shareModal').classList.remove('closed');
+        }
+
+        function closeShareModal() {
+            document.getElementById('shareModal').classList.add('closed');
+        }
+
+        async function shareCalendar() {
+            // NOTE: This is a simplified version. A real app would need a secure
+            // backend function to look up a user by email and get their UID.
+            // For this example, we will assume you can enter a user's UID directly.
+            const userToShareWith = prompt("Enter the User ID of the person to share with:");
+            const role = "editor"; // or 'viewer'
+
+            if (!userToShareWith || !AppState.activeCalendarId) return;
+            
+            try {
+                const calendarRef = doc(fbDb, 'calendars', AppState.activeCalendarId);
+                // Use dot notation to update a field within a map
+                const updatePath = `members.${userToShareWith}`;
+                await setDoc(calendarRef, {
+                    members: { [userToShareWith]: role }
+                }, { merge: true }); // Use merge:true to avoid overwriting the whole document
+
+                showMessage('Success', 'Calendar shared!', 'bg-green-600');
+                // You might want to refresh the calendar data locally
+            } catch(err) {
+                 console.error("Error sharing calendar:", err);
+                 showMessage('Error', 'Failed to share calendar.', 'bg-red-500');
+            }
+        }
+
         // --- App Initialization (Updated) ---
 
         document.addEventListener("DOMContentLoaded", () => {
@@ -1153,6 +1220,12 @@ async function initializeCloudDB() {
             colorSelector.innerHTML += `<div class="relative w-7 h-7"><button type="button" id="custom-color-swatch" class="color-swatch w-full h-full border-dashed border-gray-400" title="Custom color"></button><input type="color" id="custom-color-input" class="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"></div>`;
             document.querySelectorAll('.color-swatch').forEach(swatch => swatch.addEventListener('click', e => setActiveColor(e.target.dataset.color)));
             document.getElementById('custom-color-input').addEventListener('input', e => setActiveColor(e.target.value));
+
+            // MODIFIED: Add event listeners for new UI elements
+            document.getElementById('calendarSelector').addEventListener('change', handleCalendarChange);
+            document.getElementById('createCalendarBtn').addEventListener('click', createNewCalendar);
+            document.getElementById('shareCalendarBtn').addEventListener('click', shareCalendar); // Simplified for this example
+            document.querySelector('[data-action="close-share-modal"]').addEventListener('click', closeShareModal);
 
             const presetTagsContainer = document.getElementById('presetTagsContainer');
             PRESET_TAGS.forEach(tag => { const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'preset-tag-chip text-xs font-semibold px-2.5 py-1 rounded-full transition'; chip.textContent = tag; chip.dataset.tag = tag; presetTagsContainer.appendChild(chip); });
