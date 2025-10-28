@@ -534,16 +534,32 @@ async function initializeCloudDB() {
         }
 
         // NEW: Function to fetch user's calendars
-        async function fetchUserCalendars() {
-            if (!AppState.userId) return;
-            const calendarsRef = collection(fbDb, 'calendars');
-            // Query for calendars where the user's ID is a key in the 'members' map
-            const q = query(calendarsRef, where(`members.${AppState.userId}`, 'in', ['owner', 'editor', 'viewer']));
-            
-            const snapshot = await getDocs(q);
-            AppState.calendars = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            console.log(`Found ${AppState.calendars.length} calendars for user.`);
-        }
+async function fetchUserCalendars() {
+    if (!AppState.userId) return;
+    AppState.calendars = []; // Clear old list
+
+    // 1. Get the user's document which contains their calendar memberships.
+    const userDocRef = doc(fbDb, 'users', AppState.userId);
+    const userDocSnap = await getDoc(userDocRef);
+
+    if (!userDocSnap.exists() || !userDocSnap.data().my_calendars) {
+        console.log("User has no calendar memberships yet.");
+        return;
+    }
+
+    const calendarIds = Object.keys(userDocSnap.data().my_calendars);
+    if (calendarIds.length === 0) return;
+
+    // 2. Fetch the full details for each calendar the user is a member of.
+    const calendarPromises = calendarIds.map(id => getDoc(doc(fbDb, 'calendars', id)));
+    const calendarDocs = await Promise.all(calendarPromises);
+
+    AppState.calendars = calendarDocs
+        .filter(docSnap => docSnap.exists())
+        .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+
+    console.log(`Found ${AppState.calendars.length} calendars for user.`);
+}
 
         // MODIFIED: Listener is now set up based on the active calendar
         function setupFirestoreListener() {
@@ -1100,34 +1116,51 @@ async function initializeCloudDB() {
         }
 
         async function createNewCalendar() {
-            const calendarName = prompt("Enter a name for the new calendar:", "My New Calendar");
-            if (!calendarName || !AppState.userId) return;
+    const calendarName = prompt("Enter a name for the new calendar:", "My New Calendar");
+    if (!calendarName || !AppState.userId) return;
 
-            try {
-                const calendarsRef = collection(fbDb, 'calendars');
-                await addDoc(calendarsRef, {
-                    name: calendarName,
-                    owner: AppState.userId,
-                    members: {
-                        [AppState.userId]: 'owner'
-                    }
-                });
-                showMessage('Success', `Calendar "${calendarName}" created.`, 'bg-green-600');
-                // Refresh the calendar list
-                await fetchUserCalendars();
-                renderCalendarSelector();
-                // Switch to the new calendar
-                const newCal = AppState.calendars.find(c => c.name === calendarName);
-                if (newCal) {
-                    AppState.activeCalendarId = newCal.id;
-                    document.getElementById('calendarSelector').value = AppState.activeCalendarId;
-                    setupFirestoreListener();
-                }
-            } catch (err) {
-                console.error("Error creating calendar:", err);
-                showMessage('Error', 'Failed to create calendar.', 'bg-red-500');
+    try {
+        const calendarsRef = collection(fbDb, 'calendars');
+        const userRef = doc(fbDb, 'users', AppState.userId);
+        
+        // Create a new calendar document with an auto-generated ID
+        const newCalendarRef = doc(calendarsRef); 
+
+        // Use a batch to perform multiple writes at once
+        const batch = writeBatch(fbDb);
+
+        // 1. Set the data for the new calendar
+        batch.set(newCalendarRef, {
+            name: calendarName,
+            owner: AppState.userId,
+            members: {
+                [AppState.userId]: 'owner'
             }
-        }
+        });
+
+        // 2. Add the calendar membership to the user's document
+        batch.set(userRef, {
+            my_calendars: {
+                [newCalendarRef.id]: 'owner'
+            }
+        }, { merge: true }); // Merge to avoid overwriting other memberships
+
+        await batch.commit();
+
+        showMessage('Success', `Calendar "${calendarName}" created.`, 'bg-green-600');
+        await fetchUserCalendars();
+        renderCalendarSelector();
+        
+        // Switch to the new calendar
+        AppState.activeCalendarId = newCalendarRef.id;
+        document.getElementById('calendarSelector').value = AppState.activeCalendarId;
+        setupFirestoreListener();
+
+    } catch (err) {
+        console.error("Error creating calendar:", err);
+        showMessage('Error', 'Failed to create calendar.', 'bg-red-500');
+    }
+}
         
         function openShareModal() {
             const activeCalendar = AppState.calendars.find(c => c.id === AppState.activeCalendarId);
@@ -1149,29 +1182,37 @@ async function initializeCloudDB() {
         }
 
         async function shareCalendar() {
-            // NOTE: This is a simplified version. A real app would need a secure
-            // backend function to look up a user by email and get their UID.
-            // For this example, we will assume you can enter a user's UID directly.
-            const userToShareWith = prompt("Enter the User ID of the person to share with:");
-            const role = "editor"; // or 'viewer'
+    // A proper implementation would require a backend function to securely look up a user by email.
+    // This simplified version requires you to know the other user's UID.
+    const userIdToShareWith = prompt("Enter the User ID of the person to share with:");
+    const role = "editor"; // or 'viewer'
 
-            if (!userToShareWith || !AppState.activeCalendarId) return;
-            
-            try {
-                const calendarRef = doc(fbDb, 'calendars', AppState.activeCalendarId);
-                // Use dot notation to update a field within a map
-                const updatePath = `members.${userToShareWith}`;
-                await setDoc(calendarRef, {
-                    members: { [userToShareWith]: role }
-                }, { merge: true }); // Use merge:true to avoid overwriting the whole document
+    if (!userIdToShareWith || !AppState.activeCalendarId) return;
 
-                showMessage('Success', 'Calendar shared!', 'bg-green-600');
-                // You might want to refresh the calendar data locally
-            } catch(err) {
-                 console.error("Error sharing calendar:", err);
-                 showMessage('Error', 'Failed to share calendar.', 'bg-red-500');
-            }
-        }
+    try {
+        const calendarRef = doc(fbDb, 'calendars', AppState.activeCalendarId);
+        const userToShareRef = doc(fbDb, 'users', userIdToShareWith);
+
+        const batch = writeBatch(fbDb);
+
+        // 1. Add the new member to the calendar's 'members' map
+        batch.set(calendarRef, {
+            members: { [userIdToShareWith]: role }
+        }, { merge: true });
+
+        // 2. Add the calendar membership to the new user's document
+        batch.set(userToShareRef, {
+            my_calendars: { [AppState.activeCalendarId]: role }
+        }, { merge: true });
+        
+        await batch.commit();
+
+        showMessage('Success', 'Calendar shared!', 'bg-green-600');
+    } catch(err) {
+         console.error("Error sharing calendar:", err);
+         showMessage('Error', 'Failed to share calendar.', 'bg-red-500');
+    }
+}
 
         // --- App Initialization (Updated) ---
 
