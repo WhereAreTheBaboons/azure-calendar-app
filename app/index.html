@@ -577,7 +577,12 @@ async function fetchUserCalendars() {
             eventsCollectionRef = collection(fbDb, `calendars/${AppState.activeCalendarId}/events`);
             const q = query(eventsCollectionRef);
             
-            document.getElementById('loadingEvents').textContent = 'Loading events...';
+            // --- FIX START ---
+            // Instead of finding an existing element, we now clear the list
+            // and create our own loading message every time.
+            const eventListContainer = document.getElementById('eventListContainer');
+            eventListContainer.innerHTML = '<p class="text-gray-500 text-sm italic p-4 text-center">Loading events...</p>';
+            // --- FIX END ---
 
             unsubscribeFromEvents = onSnapshot(q, (snapshot) => {
                 console.log(`Received ${snapshot.size} events from calendar ${AppState.activeCalendarId}.`);
@@ -594,12 +599,14 @@ async function fetchUserCalendars() {
                 renderTagFilters(); 
                 filterAndRenderEventList();
                 
-                if (AppState.events.length === 0 && document.getElementById('searchBar').value === '' && AppState.activeTags.size === 0) {
-                     document.getElementById('eventListContainer').innerHTML = '<p class="text-gray-500 text-sm italic p-4 text-center">No events in this calendar. Add one!</p>';
-                }
+                // This logic is now handled correctly by renderEventList
+                // which will replace the loading message.
+                
             }, (error) => {
                 console.error('Error listening to Firestore:', error);
                 showMessage('Connection Error', 'Failed to load real-time data.', 'bg-red-500');
+                // Also update the UI on error
+                document.getElementById('eventListContainer').innerHTML = '<p class="text-red-500 text-sm italic p-4 text-center">Error: Connection failed.</p>';
             });
         }
 
