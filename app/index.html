@@ -586,29 +586,39 @@ async function fetchUserCalendars() {
 
             unsubscribeFromEvents = onSnapshot(q, (snapshot) => {
                 console.log(`Received ${snapshot.size} events from calendar ${AppState.activeCalendarId}.`);
-                const allEvents = snapshot.docs.map(doc => doc.data());
+                
+                // --- FIX START ---
+                // Filter out any documents that are missing essential data
+                const allEvents = snapshot.docs
+                    .map(doc => doc.data())
+                    .filter(event => event.name && event.startDate); 
+                // --- FIX END ---
                 
                 AppState.events = allEvents.map(e => ({ 
                     ...e, id: e.id, endDate: e.endDate || e.startDate, startTime: e.startTime || '08:00', 
                     color: e.color || '#4f46e5', includeWeekends: !!e.includeWeekends, tags: Array.isArray(e.tags) ? e.tags : [], 
                     notes: Array.isArray(e.notes) ? e.notes : [], msTeamsLink: e.msTeamsLink || '', 
                     userId: e.userId || 'unknown', createdAt: e.createdAt || new Date().toISOString() 
-                })).sort((a,b) => a.startDate.localeCompare(b.startDate) || a.startTime.localeCompare(b.startTime));
+                })).sort((a,b) => {
+                    // --- FIX START ---
+                    // Provide default values to prevent crash if data is still missing
+                    const dateA = a.startDate || '1970-01-01';
+                    const dateB = b.startDate || '1970-01-01';
+                    const timeA = a.startTime || '00:00';
+                    const timeB = b.startTime || '00:00';
+                    return dateA.localeCompare(dateB) || timeA.localeCompare(timeB);
+                    // --- FIX END ---
+                });
                 
                 renderCalendar(); 
                 renderTagFilters(); 
                 filterAndRenderEventList();
                 
-                // This logic is now handled correctly by renderEventList
-                // which will replace the loading message.
-                
             }, (error) => {
                 console.error('Error listening to Firestore:', error);
                 showMessage('Connection Error', 'Failed to load real-time data.', 'bg-red-500');
-                // Also update the UI on error
                 document.getElementById('eventListContainer').innerHTML = '<p class="text-red-500 text-sm italic p-4 text-center">Error: Connection failed.</p>';
             });
-        }
 
         // MODIFIED: All DB functions now need to use the dynamic `eventsCollectionRef`
         async function addOrUpdateEventInDB(evt) {
