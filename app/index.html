@@ -89,8 +89,28 @@
         .today { background-color: #e0f2fe !important; }
         .highlighted-day { background-color: #fce7f6 !important; border: 2px solid #db2777; padding: 6px; }
         
-        .event-bar { border-radius: 4px; padding: 2px 4px; font-size: 0.75rem; line-height: 1; margin-bottom: 2px; /* color: white; */ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: transform 0.1s; position: relative; height: auto; min-height: 20px; display: flex; align-items: center; justify-content: center; }
-        .event-bar:hover { transform: scale(1.02); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .event-bar { border-radius: 4px; padding: 2px 4px; font-size: 0.75rem; line-height: 1; margin-bottom: 2px; /* color: white; */ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: transform 0.1s ease-in-out; position: relative; z-index: 2; height: auto; min-height: 20px; display: flex; align-items: center; justify-content: center; }
+        .event-bar::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.25); /* 25% white overlay */
+            border-radius: 4px; /* Match parent */
+            z-index: 1;
+            opacity: 0;
+            transition: opacity 0.1s ease-in-out;
+            pointer-events: none; /* Make sure it doesn't block clicks */
+        }
+        .event-bar:hover {
+            outline: 2px solid #000;
+            /* outline-offset: -1px; */ /* Optional: pulls the outline inside */
+        }
+        .event-bar:hover::before {
+            opacity: 1;
+        }
         .continuous-event { position: absolute; height: auto; min-height: 20px; display: flex; align-items: center; justify-content: center; margin-top: 8px; z-index: 6; }
         
         /* Modal styles are still needed for confirm/duplicate/share modals */
@@ -160,6 +180,9 @@
         html.dark .notes-history-view { background-color: #111827; border-color: #374151; color: #d1d5db; }
         html.dark #templateDropdownContainer:hover { background-color: #374151; }
         html.dark #copyEventIdBtn:hover { background-color: #4b5563; }
+        html.dark .event-bar:hover {
+            outline-color: #fff;
+        }
     </style>
 </head>
 <body class="sidebar-open">
