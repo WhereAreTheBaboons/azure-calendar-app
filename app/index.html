@@ -95,9 +95,9 @@
         .day-cell:hover:not(.highlighted-day) { background-color: #f3f4f6; }
         .day-cell:hover { border: 1px solid #000; }
         .today { background-color: #e0f2fe !important; }
-        .highlighted-day { border: 2px solid #000000 !important; padding: 6px; 
-            background-color: #d6dde57d !important;
-            border: 1px solid #0000001a !important;
+        .highlighted-day {
+            background-color: #d6dde57d;
+            border: 1px solid #0000001a;
             box-shadow: rgba(0, 0, 0, 0.10) 0px 3px 6px, rgba(0, 0, 0, 0.15) 0px 3px 6px !important;
         }
         .event-bar { border-radius: 4px; padding: 2px 4px; font-size: 0.75rem; line-height: 1; margin-bottom: 2px; /* color: white; */ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: transform 0.1s ease-in-out; position: relative; z-index: 2; height: auto; min-height: 20px; display: flex; align-items: center; justify-content: center; }
@@ -115,11 +115,11 @@
             transition: opacity 0.1s ease-in-out;
             pointer-events: none; /* Make sure it doesn't block clicks */
         }
-        .event-bar-hovered {
+        .event-hovered {
             outline: 2px solid #000;
             /* outline-offset: -1px; */ /* Optional: pulls the outline inside */
         }
-        .event-bar-hovered::before {
+        .event-hovered::before {
             opacity: 1;
         }
         .event-highlighted-bar {
@@ -844,7 +844,7 @@ async function fetchUserCalendars() {
                     ? `<span class="text-xs font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full ml-1.5" title="Created by you">Me</span>`
                     : `<span class="text-xs font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded-full ml-1.5" title="Created by ${e.userId}">Other</span>`;
 
-                return `<div class="p-3 rounded-lg border flex items-start transition cursor-pointer }" data-action="highlight-event" data-event-id="${e.id}">
+                return `<div class="p-3 rounded-lg flex items-start transition cursor-pointer" data-action="highlight-event" data-event-id="${e.id}">
                             <div class="w-3 h-3 rounded-full mr-3 mt-1 flex-shrink-0" style="background-color: ${e.color};"></div>
                             <div class="flex-grow min-w-0">
                                 <p class="font-medium text-gray-800 truncate" title="${e.name.replace(/"/g, '&quot;')}">${e.name}</p>
@@ -863,7 +863,9 @@ async function fetchUserCalendars() {
             // 1. Clear day cell highlights
             document.querySelectorAll('.day-cell.highlighted-day').forEach(c => c.classList.remove('highlighted-day'));
             // 2. Clear list item highlights
-            document.querySelectorAll('#eventListContainer > div').forEach(i => i.className = i.className.replace(/border-pink-500 ring-2 ring-pink-200 bg-pink-50/g, 'border-gray-200 hover:bg-gray-50'));
+            document.querySelectorAll('#eventListContainer > div.border-pink-500').forEach(i => {
+                i.classList.remove('border-pink-500', 'ring-2', 'ring-pink-200', 'bg-pink-50');
+            });
             // 3. Clear event bar highlights
             document.querySelectorAll('.event-highlighted-bar').forEach(bar => {
                 bar.classList.remove('event-highlighted-bar');
