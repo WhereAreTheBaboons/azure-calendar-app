@@ -75,7 +75,14 @@
 
 
         .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,.05), 0 10px 15px rgba(0,0,0,.05); padding: 24px; }
-        .day-cell { min-height: 100px; padding: 8px; transition: background-color 0.1s; border-radius: 0.75rem; display:flex; flex-direction: column; position: relative;}
+        .day-cell {
+            min-height: 100px; padding: 8px; transition: background-color 0.1s; border-radius: 0.75rem; display:flex; flex-direction: column; position: relative;
+            --tw-shadow: 2px 2px 40px 0 rgb(0 0 0 / 0.08);
+            --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);
+            box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+            border: 1px solid #0000001a;
+            border-radius: 0.5rem;
+        }
 		#dayCellsContainer { position: relative; z-index: 1; }
 		#continuousEventsContainer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
 		.day-cell.drag-over { outline: 2px dashed #60a5fa; outline-offset: -4px; }
@@ -86,9 +93,13 @@
 		.left-handle { left: 0; border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
 		.right-handle { right: 0; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
         .day-cell:hover:not(.highlighted-day) { background-color: #f3f4f6; }
+        .day-cell:hover { border: 1px solid #000; }
         .today { background-color: #e0f2fe !important; }
-        .highlighted-day { background-color: #fce7f6 !important; border: 2px solid #db2777; padding: 6px; }
-        
+        .highlighted-day { border: 2px solid #000000 !important; padding: 6px; 
+            background-color: #d6dde57d !important;
+            border: 1px solid #0000001a !important;
+            box-shadow: rgba(0, 0, 0, 0.10) 0px 3px 6px, rgba(0, 0, 0, 0.15) 0px 3px 6px !important;
+        }
         .event-bar { border-radius: 4px; padding: 2px 4px; font-size: 0.75rem; line-height: 1; margin-bottom: 2px; /* color: white; */ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: transform 0.1s ease-in-out; position: relative; z-index: 2; height: auto; min-height: 20px; display: flex; align-items: center; justify-content: center; }
         .event-bar::before {
             content: "";
@@ -104,11 +115,17 @@
             transition: opacity 0.1s ease-in-out;
             pointer-events: none; /* Make sure it doesn't block clicks */
         }
-        .event-bar:hover {
+        .event-bar-hovered {
             outline: 2px solid #000;
             /* outline-offset: -1px; */ /* Optional: pulls the outline inside */
         }
-        .event-bar:hover::before {
+        .event-bar-hovered::before {
+            opacity: 1;
+        }
+        .event-highlighted-bar {
+            outline: 2px solid #000;
+        }
+        .event-highlighted-bar::before {
             opacity: 1;
         }
         .continuous-event { position: absolute; height: auto; min-height: 20px; display: flex; align-items: center; justify-content: center; margin-top: 8px; z-index: 6; }
@@ -180,7 +197,11 @@
         html.dark .notes-history-view { background-color: #111827; border-color: #374151; color: #d1d5db; }
         html.dark #templateDropdownContainer:hover { background-color: #374151; }
         html.dark #copyEventIdBtn:hover { background-color: #4b5563; }
-        html.dark .event-bar:hover {
+        html.dark .event-bar-hovered {
+            outline-color: #fff;
+        }
+        html.dark .event-hovered,
+        html.dark .event-highlighted-bar {
             outline-color: #fff;
         }
     </style>
@@ -823,7 +844,7 @@ async function fetchUserCalendars() {
                     ? `<span class="text-xs font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full ml-1.5" title="Created by you">Me</span>`
                     : `<span class="text-xs font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded-full ml-1.5" title="Created by ${e.userId}">Other</span>`;
 
-                return `<div class="p-3 rounded-lg border flex items-start transition cursor-pointer ${isSel ? 'border-pink-500 ring-2 ring-pink-200 bg-pink-50' : 'border-gray-200 hover:bg-gray-50'}" data-action="highlight-event" data-event-id="${e.id}">
+                return `<div class="p-3 rounded-lg border flex items-start transition cursor-pointer }" data-action="highlight-event" data-event-id="${e.id}">
                             <div class="w-3 h-3 rounded-full mr-3 mt-1 flex-shrink-0" style="background-color: ${e.color};"></div>
                             <div class="flex-grow min-w-0">
                                 <p class="font-medium text-gray-800 truncate" title="${e.name.replace(/"/g, '&quot;')}">${e.name}</p>
@@ -838,9 +859,48 @@ async function fetchUserCalendars() {
                         </div>`;
             }).join('');
         }
-        function clearAllHighlights() { document.querySelectorAll('.day-cell.highlighted-day').forEach(c => c.classList.remove('highlighted-day')); document.querySelectorAll('#eventListContainer > div').forEach(i => i.className = i.className.replace(/border-pink-500 ring-2 ring-pink-200 bg-pink-50/g, 'border-gray-200 hover:bg-gray-50')); }
-        window.toggleEventHighlight = function(id, el) { clearAllHighlights(); if (AppState.highlightedEventId === id) { AppState.highlightedEventId = null; return; } AppState.highlightedEventId = id; el.classList.remove('border-gray-200', 'hover:bg-gray-50'); el.classList.add('border-pink-500', 'ring-2', 'ring-pink-200', 'bg-pink-50'); const event = AppState.events.find(e => e.id === id); if (!event) return; let current = new Date(parseLocalDate(event.startDate)); const end = parseLocalDate(event.endDate || event.startDate); while (current <= end) { if (isDayIncludedInEvent(current, event)) { const cell = document.querySelector(`.day-cell[data-date="${formatLocalDate(current)}"]`); if (cell) cell.classList.add('highlighted-day'); } current.setDate(current.getDate() + 1); } };
-        function generateContinuousCalendarHTML(startDate, endDate) { const today = new Date(); today.setHours(0, 0, 0, 0); const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri"]; let html = `<h3 class="text-xl font-semibold text-gray-700 mb-3">Continuous Weekday Calendar</h3><div class="grid grid-cols-5 text-center font-medium text-xs text-gray-500 mb-1">${weekdays.map(d => `<div>${d}</div>`).join("")}</div><div class="relative"><div id="dayCellsContainer" class="grid grid-cols-5 gap-1 relative">`; let current = new Date(startDate); current.setHours(0, 0, 0, 0); let renderedCount = 0; while (current <= endDate) { const dayOfWeek = current.getDay(); if (dayOfWeek >= 1 && dayOfWeek <= 5) { const isToday = current.getTime() === today.getTime(); const dateStr = formatLocalDate(current); const displayDate = `${String(current.getDate()).padStart(2, '0')}-${current.toLocaleDateString('en-US', { month: 'short' })}`; const dayEvents = getEventsForDate(current); const gridStyle = (renderedCount === 0) ? `grid-column-start: ${dayOfWeek};` : ''; let classes = `day-cell bg-white border border-gray-200 rounded-lg p-2 text-gray-800 shadow-sm transition hover:shadow-md ${isToday ? "today" : ""}`; const hasEvents = dayEvents.length > 0; const counterHTML = `<div class="event-counter ${hasEvents ? 'has-events' : 'no-events'}" data-action="quick-add" title="Quick add event"><span class="counter-num">${dayEvents.length}</span><span class="counter-plus">+</span></div>`; let content = `<div class="flex items-center justify-between text-sm font-semibold mb-1"><span data-action="open-agenda" class="cursor-pointer hover:underline">${displayDate}</span></div>`; const highlight = AppState.events.find(e => e.id === AppState.highlightedEventId); if (highlight && isDayIncludedInEvent(current, highlight)) classes += " highlighted-day"; html += `<div class="${classes}" style="${gridStyle}" data-date="${dateStr}" data-cell-index="${renderedCount}">${content}${counterHTML}</div>`; renderedCount++; } current.setDate(current.getDate() + 1); } html += `</div></div>`; return html; }
+        function clearAllHighlights() {
+            // 1. Clear day cell highlights
+            document.querySelectorAll('.day-cell.highlighted-day').forEach(c => c.classList.remove('highlighted-day'));
+            // 2. Clear list item highlights
+            document.querySelectorAll('#eventListContainer > div').forEach(i => i.className = i.className.replace(/border-pink-500 ring-2 ring-pink-200 bg-pink-50/g, 'border-gray-200 hover:bg-gray-50'));
+            // 3. Clear event bar highlights
+            document.querySelectorAll('.event-highlighted-bar').forEach(bar => {
+                bar.classList.remove('event-highlighted-bar');
+            });
+        }
+        window.toggleEventHighlight = function(id, el) {
+            const isTogglingOff = AppState.highlightedEventId === id;
+            clearAllHighlights(); 
+
+            if (isTogglingOff) {
+                AppState.highlightedEventId = null;
+                return;
+            }
+
+            AppState.highlightedEventId = id;
+
+            el.classList.remove('border-gray-200', 'hover:bg-gray-50');
+            el.classList.add('border-pink-500', 'ring-2', 'ring-pink-200', 'bg-pink-50');
+            
+            document.querySelectorAll(`.event-bar[data-event-id="${id}"]`).forEach(bar => {
+                bar.classList.add('event-highlighted-bar');
+            });
+
+            const event = AppState.events.find(e => e.id === id); 
+            if (!event) return; 
+            let current = new Date(parseLocalDate(event.startDate)); 
+            const end = parseLocalDate(event.endDate || event.startDate); 
+            while (current <= end) { 
+                if (isDayIncludedInEvent(current, event)) { 
+                    const cell = document.querySelector(`.day-cell[data-date="${formatLocalDate(current)}"]`); 
+                    if (cell) cell.classList.add('highlighted-day'); 
+                } 
+                current.setDate(current.getDate() + 1); 
+            }
+        };
+
+        function generateContinuousCalendarHTML(startDate, endDate) { const today = new Date(); today.setHours(0, 0, 0, 0); const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri"]; let html = `<div class="grid grid-cols-5 text-center font-medium text-xs text-gray-500 mb-1">${weekdays.map(d => `<div>${d}</div>`).join("")}</div><div class="relative"><div id="dayCellsContainer" class="grid grid-cols-5 gap-1 relative">`; let current = new Date(startDate); current.setHours(0, 0, 0, 0); let renderedCount = 0; while (current <= endDate) { const dayOfWeek = current.getDay(); if (dayOfWeek >= 1 && dayOfWeek <= 5) { const isToday = current.getTime() === today.getTime(); const dateStr = formatLocalDate(current); const displayDate = `${String(current.getDate()).padStart(2, '0')}-${current.toLocaleDateString('en-US', { month: 'short' })}`; const dayEvents = getEventsForDate(current); const gridStyle = (renderedCount === 0) ? `grid-column-start: ${dayOfWeek};` : ''; let classes = `day-cell bg-white p-2 text-gray-800 transition hover:shadow-md ${isToday ? "today" : ""}`; const hasEvents = dayEvents.length > 0; const counterHTML = `<div class="event-counter ${hasEvents ? 'has-events' : 'no-events'}" data-action="quick-add" title="Quick add event"><span class="counter-num">${dayEvents.length}</span><span class="counter-plus">+</span></div>`; let content = `<div class="flex items-center justify-between text-sm font-semibold mb-1"><span data-action="open-agenda" class="cursor-pointer hover:underline">${displayDate}</span></div>`; const highlight = AppState.events.find(e => e.id === AppState.highlightedEventId); if (highlight && isDayIncludedInEvent(current, highlight)) classes += " highlighted-day"; html += `<div class="${classes}" style="${gridStyle}" data-date="${dateStr}" data-cell-index="${renderedCount}">${content}${counterHTML}</div>`; renderedCount++; } current.setDate(current.getDate() + 1); } html += `</div></div>`; return html; }
         function getWeekKey(date) { const m = new Date(date); const day = m.getDay(); const diff = m.getDate() - day + (day === 0 ? -6 : 1); m.setDate(diff); return `${m.getFullYear()}-${getWeekNumber(m)}`; }
         function getWeekNumber(d) { d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7)); const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1)); return Math.ceil((((d - yearStart) / 86400000) + 1) / 7); }
         function calculateWeekHeights(cells) { const weekEvents = new Map(); cells.forEach(cell => { const dateStr = cell.dataset.date; if (!dateStr) return; const weekKey = getWeekKey(parseLocalDate(dateStr)); const dayEvents = getEventsForDate(parseLocalDate(dateStr)); const max = weekEvents.get(weekKey) || 0; weekEvents.set(weekKey, Math.max(max, dayEvents.length)); }); return weekEvents; }
@@ -1534,6 +1594,40 @@ async function fetchUserCalendars() {
             const calendarContainer = document.getElementById('calendarContainer'); 
             if (calendarContainer) { 
                 let dragCell = null; 
+                let currentHoveredEventId = null;
+                calendarContainer.addEventListener('mouseover', (e) => {
+                    const bar = e.target.closest('.event-bar');
+                    if (!bar) return; // Not hovering a bar
+
+                    const eventId = bar.dataset.eventId;
+                    if (eventId && eventId !== currentHoveredEventId) {
+                        // Remove old hover class if any
+                        if (currentHoveredEventId) {
+                            document.querySelectorAll(`.event-bar[data-event-id="${currentHoveredEventId}"]`).forEach(el => el.classList.remove('event-hovered'));
+                        }
+                        
+                        // Add new hover class
+                        currentHoveredEventId = eventId;
+                        document.querySelectorAll(`.event-bar[data-event-id="${eventId}"]`).forEach(el => el.classList.add('event-hovered'));
+                    }
+                });
+
+                calendarContainer.addEventListener('mouseout', (e) => {
+                    if (!currentHoveredEventId) return; // Not hovering anything
+
+                    const bar = e.target.closest('.event-bar');
+                    if (bar) {
+                        const eventId = bar.dataset.eventId;
+                        const relatedBar = e.relatedTarget ? e.relatedTarget.closest('.event-bar') : null;
+                        let relatedEventId = relatedBar ? relatedBar.dataset.eventId : null;
+
+                        // If we are moving to a different event, or not to an event bar at all
+                        if (eventId === currentHoveredEventId && eventId !== relatedEventId) {
+                             document.querySelectorAll(`.event-bar[data-event-id="${currentHoveredEventId}"]`).forEach(el => el.classList.remove('event-hovered'));
+                             currentHoveredEventId = null;
+                        }
+                    }
+                });
                 calendarContainer.addEventListener('dragstart', (e) => { const bar = e.target.closest('.event-bar'); if (bar) { const event = AppState.events.find(ev => ev.id === bar.dataset.eventId); if (event) window.handleDragStart(e, event); } }); 
                 calendarContainer.addEventListener('mousedown', (e) => { const handle = e.target.closest('.resize-handle'); if (handle) { const event = AppState.events.find(ev => ev.id === handle.closest('.event-bar').dataset.eventId); if (event) window.startResize(e, event, handle.dataset.resizeType); } }); 
                 calendarContainer.addEventListener('dragover', (e) => { const cell = e.target.closest('.day-cell'); if (cell) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (cell !== dragCell) { dragCell?.classList.remove('drag-over'); cell.classList.add('drag-over'); dragCell = cell; } } }); 
