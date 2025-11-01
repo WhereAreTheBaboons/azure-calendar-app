@@ -24,10 +24,8 @@
             border-left: 1px solid #e5e7eb; 
             padding: 0; 
         }
-        #sidebarToggle { position: fixed; top: 24px; right: 24px; z-index: 201; transition: right 0.35s ease-in-out; }
         body.sidebar-open #main-content { margin-right: calc(450px + 24px); }
         body.sidebar-open #sidebar { transform: translateX(0); }
-        body.sidebar-open #sidebarToggle { right: calc(450px + 24px); }
 
         #months-display-control input[type="number"] { -moz-appearance: textfield; appearance: textfield; text-align: center; font-weight: 600; }
         #months-display-control input[type="number"]::-webkit-outer-spin-button, #months-display-control input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -108,7 +106,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: rgba(255, 255, 255, 0.25);
+            background-color: rgba(255, 255, 255, 0.15);
             border-radius: 4px;
             z-index: 1;
             opacity: 0;
@@ -204,21 +202,11 @@
             outline-color: #fff;
         }
         html.dark .event-bar::before{
-            background-color: rgba(0, 0, 0, 0.25);
+            background-color: rgba(0, 0, 0, 0.15);
         }
     </style>
 </head>
 <body class="sidebar-open">
-    <!-- The HTML structure remains unchanged from your original file -->
-    <button id="sidebarToggle" class="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-        <svg id="sidebarToggleIconOpen" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
-        </svg>
-        <svg id="sidebarToggleIconClose" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-    </button>
-    
     <main id="main-content" class="card p-4 md:p-6 lg:p-8">
         <header class="flex justify-between items-center mb-6">
             <div class="flex items-center space-x-2">
@@ -235,6 +223,7 @@
                 <select id="calendarSelector" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition"></select>
                 <button id="createCalendarBtn" class="px-3 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold text-sm rounded-lg" title="Create New Calendar">+</button>
                 <button id="shareCalendarBtn" class="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white font-semibold text-sm rounded-lg" title="Share Calendar">Share</button>
+                <button id="sidebarToggle" class="bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"> <svg id="sidebarToggleIconOpen" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"> <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" /> </svg> <svg id="sidebarToggleIconClose" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"> <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /> </svg> </button>
             </div>
         </header>
         <div id="calendarContainer" class="space-y-8"></div>
