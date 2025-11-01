@@ -844,7 +844,7 @@ async function fetchUserCalendars() {
                     ? `<span class="text-xs font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full ml-1.5" title="Created by you">Me</span>`
                     : `<span class="text-xs font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded-full ml-1.5" title="Created by ${e.userId}">Other</span>`;
 
-                return `<div class="p-3 rounded-lg flex items-start transition cursor-pointer" data-action="highlight-event" data-event-id="${e.id}">
+                return `<div class="p-3 rounded-lg border flex items-start transition cursor-pointer ${isSel ? 'border-pink-500 ring-2 ring-pink-200 bg-pink-50' : 'border-gray-200 hover:bg-gray-50'}" data-action="highlight-event" data-event-id="${e.id}">
                             <div class="w-3 h-3 rounded-full mr-3 mt-1 flex-shrink-0" style="background-color: ${e.color};"></div>
                             <div class="flex-grow min-w-0">
                                 <p class="font-medium text-gray-800 truncate" title="${e.name.replace(/"/g, '&quot;')}">${e.name}</p>
@@ -865,6 +865,8 @@ async function fetchUserCalendars() {
             // 2. Clear list item highlights
             document.querySelectorAll('#eventListContainer > div.border-pink-500').forEach(i => {
                 i.classList.remove('border-pink-500', 'ring-2', 'ring-pink-200', 'bg-pink-50');
+                // Add back the default classes
+                i.classList.add('border-gray-200', 'hover:bg-gray-50');
             });
             // 3. Clear event bar highlights
             document.querySelectorAll('.event-highlighted-bar').forEach(bar => {
