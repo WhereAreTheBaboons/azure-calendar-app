@@ -77,11 +77,12 @@
         .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,.05), 0 10px 15px rgba(0,0,0,.05); padding: 24px; }
         .day-cell {
             min-height: 100px; padding: 8px; transition: background-color 0.1s; border-radius: 0.75rem; display:flex; flex-direction: column; position: relative;
-            --tw-shadow: 2px 2px 40px 0 rgb(0 0 0 / 0.08);
+            --tw-shadow: 10px 10px 20px 0 rgb(0 0 0 / 0.08)
             --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);
             box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
             border: 1px solid #0000001a;
             border-radius: 0.5rem;
+            background: #fff;
         }
 		#dayCellsContainer { position: relative; z-index: 1; }
 		#continuousEventsContainer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
@@ -92,11 +93,10 @@
 		.day-cell.resizing-hover { outline: 2px dashed #f59e0b; outline-offset: -3px; }
 		.left-handle { left: 0; border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
 		.right-handle { right: 0; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
-        .day-cell:hover:not(.highlighted-day) { background-color: #f3f4f6; }
         .day-cell:hover { border: 1px solid #000; }
         .today { background-color: #e0f2fe !important; }
         .highlighted-day {
-            background-color: #d6dde57d;
+            background-color: #d6dde542;
             border: 1px solid #0000001a;
             box-shadow: rgba(0, 0, 0, 0.10) 0px 3px 6px, rgba(0, 0, 0, 0.15) 0px 3px 6px !important;
         }
@@ -108,8 +108,8 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: rgba(255, 255, 255, 0.25); /* 25% white overlay */
-            border-radius: 4px; /* Match parent */
+            background-color: rgba(255, 255, 255, 0.25);
+            border-radius: 4px;
             z-index: 1;
             opacity: 0;
             transition: opacity 0.1s ease-in-out;
@@ -117,7 +117,6 @@
         }
         .event-hovered {
             outline: 2px solid #000;
-            /* outline-offset: -1px; */ /* Optional: pulls the outline inside */
         }
         .event-hovered::before {
             opacity: 1;
@@ -203,6 +202,9 @@
         html.dark .event-hovered,
         html.dark .event-highlighted-bar {
             outline-color: #fff;
+        }
+        html.dark .event-bar::before{
+            background-color: rgba(0, 0, 0, 0.25);
         }
     </style>
 </head>
@@ -904,7 +906,7 @@ async function fetchUserCalendars() {
             }
         };
 
-        function generateContinuousCalendarHTML(startDate, endDate) { const today = new Date(); today.setHours(0, 0, 0, 0); const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri"]; let html = `<div class="grid grid-cols-5 text-center font-medium text-xs text-gray-500 mb-1">${weekdays.map(d => `<div>${d}</div>`).join("")}</div><div class="relative"><div id="dayCellsContainer" class="grid grid-cols-5 gap-1 relative">`; let current = new Date(startDate); current.setHours(0, 0, 0, 0); let renderedCount = 0; while (current <= endDate) { const dayOfWeek = current.getDay(); if (dayOfWeek >= 1 && dayOfWeek <= 5) { const isToday = current.getTime() === today.getTime(); const dateStr = formatLocalDate(current); const displayDate = `${String(current.getDate()).padStart(2, '0')}-${current.toLocaleDateString('en-US', { month: 'short' })}`; const dayEvents = getEventsForDate(current); const gridStyle = (renderedCount === 0) ? `grid-column-start: ${dayOfWeek};` : ''; let classes = `day-cell bg-white p-2 text-gray-800 transition hover:shadow-md ${isToday ? "today" : ""}`; const hasEvents = dayEvents.length > 0; const counterHTML = `<div class="event-counter ${hasEvents ? 'has-events' : 'no-events'}" data-action="quick-add" title="Quick add event"><span class="counter-num">${dayEvents.length}</span><span class="counter-plus">+</span></div>`; let content = `<div class="flex items-center justify-between text-sm font-semibold mb-1"><span data-action="open-agenda" class="cursor-pointer hover:underline">${displayDate}</span></div>`; const highlight = AppState.events.find(e => e.id === AppState.highlightedEventId); if (highlight && isDayIncludedInEvent(current, highlight)) classes += " highlighted-day"; html += `<div class="${classes}" style="${gridStyle}" data-date="${dateStr}" data-cell-index="${renderedCount}">${content}${counterHTML}</div>`; renderedCount++; } current.setDate(current.getDate() + 1); } html += `</div></div>`; return html; }
+        function generateContinuousCalendarHTML(startDate, endDate) { const today = new Date(); today.setHours(0, 0, 0, 0); const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri"]; let html = `<div class="grid grid-cols-5 text-center font-medium text-xs text-gray-500 mb-1">${weekdays.map(d => `<div>${d}</div>`).join("")}</div><div class="relative"><div id="dayCellsContainer" class="grid grid-cols-5 gap-1 relative">`; let current = new Date(startDate); current.setHours(0, 0, 0, 0); let renderedCount = 0; while (current <= endDate) { const dayOfWeek = current.getDay(); if (dayOfWeek >= 1 && dayOfWeek <= 5) { const isToday = current.getTime() === today.getTime(); const dateStr = formatLocalDate(current); const displayDate = `${String(current.getDate()).padStart(2, '0')}-${current.toLocaleDateString('en-US', { month: 'short' })}`; const dayEvents = getEventsForDate(current); const gridStyle = (renderedCount === 0) ? `grid-column-start: ${dayOfWeek};` : ''; let classes = `day-cell p-2 text-gray-800 transition hover:shadow-md ${isToday ? "today" : ""}`; const hasEvents = dayEvents.length > 0; const counterHTML = `<div class="event-counter ${hasEvents ? 'has-events' : 'no-events'}" data-action="quick-add" title="Quick add event"><span class="counter-num">${dayEvents.length}</span><span class="counter-plus">+</span></div>`; let content = `<div class="flex items-center justify-between text-sm font-semibold mb-1"><span data-action="open-agenda" class="cursor-pointer hover:underline">${displayDate}</span></div>`; const highlight = AppState.events.find(e => e.id === AppState.highlightedEventId); if (highlight && isDayIncludedInEvent(current, highlight)) classes += " highlighted-day"; html += `<div class="${classes}" style="${gridStyle}" data-date="${dateStr}" data-cell-index="${renderedCount}">${content}${counterHTML}</div>`; renderedCount++; } current.setDate(current.getDate() + 1); } html += `</div></div>`; return html; }
         function getWeekKey(date) { const m = new Date(date); const day = m.getDay(); const diff = m.getDate() - day + (day === 0 ? -6 : 1); m.setDate(diff); return `${m.getFullYear()}-${getWeekNumber(m)}`; }
         function getWeekNumber(d) { d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7)); const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1)); return Math.ceil((((d - yearStart) / 86400000) + 1) / 7); }
         function calculateWeekHeights(cells) { const weekEvents = new Map(); cells.forEach(cell => { const dateStr = cell.dataset.date; if (!dateStr) return; const weekKey = getWeekKey(parseLocalDate(dateStr)); const dayEvents = getEventsForDate(parseLocalDate(dateStr)); const max = weekEvents.get(weekKey) || 0; weekEvents.set(weekKey, Math.max(max, dayEvents.length)); }); return weekEvents; }
