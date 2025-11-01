@@ -330,6 +330,7 @@
                     <div id="eventModalContentArea" class="p-4 sm:p-6 space-y-4 flex-grow overflow-y-auto">
                         <input type="hidden" id="eventId">
                         <input type="hidden" id="eventColor" value="#4f46e5">
+                        <input type="hidden" id="eventTextColor" value="#ffffff"> ```
 
                         <div>
                             <label for="eventName" class="block text-sm font-medium text-gray-700 mb-1">Event Name</label>
@@ -363,9 +364,15 @@
                             </div>
                         </div>
 
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Color</label>
-                            <div id="color-selector" class="flex items-center gap-2"></div>
+                        <div class="flex items-start gap-8">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Background</label>
+                                <div id="color-selector" class="flex items-center gap-2"></div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Text</label>
+                                <div id="text-color-selector" class="flex items-center gap-2"></div>
+                            </div>
                         </div>
 
                         <div>
@@ -673,7 +680,7 @@ async function fetchUserCalendars() {
                 
                 AppState.events = allEvents.map(e => ({ 
                     ...e, id: e.id, endDate: e.endDate || e.startDate, startTime: e.startTime || '08:00', 
-                    color: e.color || '#4f46e5', includeWeekends: !!e.includeWeekends, tags: Array.isArray(e.tags) ? e.tags : [], 
+                    color: e.color || '#4f46e5', textColor: e.textColor || getTextColorForBg(e.color || '#4f46e5'), includeWeekends: !!e.includeWeekends, tags: Array.isArray(e.tags) ? e.tags : [], 
                     notes: Array.isArray(e.notes) ? e.notes : [], msTeamsLink: e.msTeamsLink || '', 
                     userId: e.userId || 'unknown', createdAt: e.createdAt || new Date().toISOString() 
                 })).sort((a,b) => a.startDate.localeCompare(b.startDate) || a.startTime.localeCompare(b.startTime));
@@ -900,7 +907,7 @@ async function fetchUserCalendars() {
         function getWeekNumber(d) { d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7)); const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1)); return Math.ceil((((d - yearStart) / 86400000) + 1) / 7); }
         function calculateWeekHeights(cells) { const weekEvents = new Map(); cells.forEach(cell => { const dateStr = cell.dataset.date; if (!dateStr) return; const weekKey = getWeekKey(parseLocalDate(dateStr)); const dayEvents = getEventsForDate(parseLocalDate(dateStr)); const max = weekEvents.get(weekKey) || 0; weekEvents.set(weekKey, Math.max(max, dayEvents.length)); }); return weekEvents; }
         function groupCellsByWeek(cells, gridRect, weekHeights) { const weekRows = []; cells.forEach(cell => { const cellRect = cell.getBoundingClientRect(); const top = Math.round(cellRect.top - gridRect.top); const dateStr = cell.dataset.date; if (!dateStr) return; const date = parseLocalDate(dateStr); const weekKey = getWeekKey(date); const height = CALENDAR_CONSTANTS.BASE_CELL_HEIGHT + ((weekHeights.get(weekKey) || 0) * CALENDAR_CONSTANTS.EVENT_ROW_HEIGHT); cell.style.minHeight = `${height}px`; let row = weekRows.find(r => Math.abs(r.top - top) < 5); if (!row) { row = { top, weekKey, height, cells: [] }; weekRows.push(row); } row.cells.push({ element: cell, rect: cellRect, index: parseInt(cell.dataset.cellIndex || '0'), date }); }); weekRows.sort((a, b) => a.top - b.top); weekRows.forEach(row => row.cells.sort((a, b) => a.rect.left - b.rect.left)); return weekRows; }
-        function renderEventsToWeeks(weekRows, gridRect, container) { const rowSlots = weekRows.map(() => []); AppState.events.forEach(event => { const start = parseLocalDate(event.startDate), end = parseLocalDate(event.endDate || event.startDate); weekRows.forEach((row, rowIndex) => { let cellsInEvent = []; row.cells.forEach(cell => { if (cell.date >= start && cell.date <= end) cellsInEvent.push(cell); }); if (cellsInEvent.length === 0) return; const startCell = cellsInEvent[0], endCell = cellsInEvent[cellsInEvent.length - 1]; const left = startCell.rect.left - gridRect.left + CALENDAR_CONSTANTS.EVENT_SIDE_MARGINS; const width = (endCell.rect.right - gridRect.left - CALENDAR_CONSTANTS.EVENT_SIDE_MARGINS) - left; let slotIndex = 0; while (slotIndex < 10 && rowSlots[rowIndex][slotIndex]?.some(p => !((left + width) <= p.left || left >= (p.left + p.width)))) slotIndex++; if (!rowSlots[rowIndex][slotIndex]) rowSlots[rowIndex][slotIndex] = []; rowSlots[rowIndex][slotIndex].push({ left, width }); const top = row.top + CALENDAR_CONSTANTS.DATE_LABEL_HEIGHT + (slotIndex * CALENDAR_CONSTANTS.EVENT_SLOT_HEIGHT); const textColor = getTextColorForBg(event.color); const bar = document.createElement('div'); let barClasses = 'continuous-event event-bar calendar-edit-btn'; if (event.id === AppState.highlightedEventId) { barClasses += ' event-highlighted-bar'; } bar.className = barClasses; bar.style.cssText = `left: ${left}px; width: ${width}px; top: ${top}px; background-color: ${event.color}; color: ${textColor}; pointer-events: auto;`; bar.dataset.eventId = event.id; bar.setAttribute('draggable', 'true'); const showName = rowIndex === 0 || cellsInEvent[0].date.getTime() === start.getTime() || cellsInEvent.length === 1; if (showName && width > 40) bar.innerHTML = `<span class="truncate text-xs flex-grow text-center px-1" style="font-size: 0.65rem; line-height: 1.2;">${event.name}</span>`; const isFirst = rowIndex === 0 || cellsInEvent[0].date.getTime() <= start.getTime(); const isLast = rowIndex === weekRows.length - 1 || cellsInEvent[cellsInEvent.length - 1].date.getTime() >= end.getTime(); if (isFirst) bar.innerHTML += `<div class="resize-handle left-handle" data-resize-type="start"></div>`; if (isLast) bar.innerHTML += `<div class="resize-handle right-handle" data-resize-type="end"></div>`; container.appendChild(bar); }); }); }
+        function renderEventsToWeeks(weekRows, gridRect, container) { const rowSlots = weekRows.map(() => []); AppState.events.forEach(event => { const start = parseLocalDate(event.startDate), end = parseLocalDate(event.endDate || event.startDate); weekRows.forEach((row, rowIndex) => { let cellsInEvent = []; row.cells.forEach(cell => { if (cell.date >= start && cell.date <= end) cellsInEvent.push(cell); }); if (cellsInEvent.length === 0) return; const startCell = cellsInEvent[0], endCell = cellsInEvent[cellsInEvent.length - 1]; const left = startCell.rect.left - gridRect.left + CALENDAR_CONSTANTS.EVENT_SIDE_MARGINS; const width = (endCell.rect.right - gridRect.left - CALENDAR_CONSTANTS.EVENT_SIDE_MARGINS) - left; let slotIndex = 0; while (slotIndex < 10 && rowSlots[rowIndex][slotIndex]?.some(p => !((left + width) <= p.left || left >= (p.left + p.width)))) slotIndex++; if (!rowSlots[rowIndex][slotIndex]) rowSlots[rowIndex][slotIndex] = []; rowSlots[rowIndex][slotIndex].push({ left, width }); const top = row.top + CALENDAR_CONSTANTS.DATE_LABEL_HEIGHT + (slotIndex * CALENDAR_CONSTANTS.EVENT_SLOT_HEIGHT); const textColor = event.textColor || getTextColorForBg(event.color); const bar = document.createElement('div'); let barClasses = 'continuous-event event-bar calendar-edit-btn'; if (event.id === AppState.highlightedEventId) { barClasses += ' event-highlighted-bar'; } bar.className = barClasses; bar.style.cssText = `left: ${left}px; width: ${width}px; top: ${top}px; background-color: ${event.color}; color: ${textColor}; pointer-events: auto;`; bar.dataset.eventId = event.id; bar.setAttribute('draggable', 'true'); const showName = rowIndex === 0 || cellsInEvent[0].date.getTime() === start.getTime() || cellsInEvent.length === 1; if (showName && width > 40) bar.innerHTML = `<span class="truncate text-xs flex-grow text-center px-1" style="font-size: 0.65rem; line-height: 1.2;">${event.name}</span>`; const isFirst = rowIndex === 0 || cellsInEvent[0].date.getTime() <= start.getTime(); const isLast = rowIndex === weekRows.length - 1 || cellsInEvent[cellsInEvent.length - 1].date.getTime() >= end.getTime(); if (isFirst) bar.innerHTML += `<div class="resize-handle left-handle" data-resize-type="start"></div>`; if (isLast) bar.innerHTML += `<div class="resize-handle right-handle" data-resize-type="end"></div>`; container.appendChild(bar); }); }); }
         function renderContinuousEventBars() { const oldContainer = document.getElementById('continuousEventsContainer'); if (oldContainer) oldContainer.remove(); const dayCellsContainer = document.getElementById('dayCellsContainer'); if (!dayCellsContainer) return; const eventsContainer = document.createElement('div'); eventsContainer.id = 'continuousEventsContainer'; dayCellsContainer.parentNode.insertBefore(eventsContainer, dayCellsContainer.nextSibling); const cells = Array.from(dayCellsContainer.querySelectorAll('.day-cell')); if (cells.length === 0) return; const gridRect = dayCellsContainer.getBoundingClientRect(); const weekHeights = calculateWeekHeights(cells); const weekRows = groupCellsByWeek(cells, gridRect, weekHeights); renderEventsToWeeks(weekRows, gridRect, eventsContainer); }
         window.renderCalendar = function() { const container = document.getElementById("calendarContainer"), header = document.getElementById("currentMonthYear"); container.innerHTML = ""; const start = new Date(AppState.currentDate.getFullYear(), AppState.currentDate.getMonth(), 1); const end = new Date(start.getFullYear(), start.getMonth() + AppState.monthsToDisplay, 0); AppState.visibleStartDate = start; AppState.visibleEndDate = end; buildEventDayCache(); container.innerHTML = generateContinuousCalendarHTML(start, end); setTimeout(renderContinuousEventBars, CALENDAR_CONSTANTS.RENDER_DELAY); const startLabel = start.toLocaleDateString("en-US", { month: "long", year: "numeric" }); const endLabel = end.toLocaleDateString("en-US", { month: "long", year: "numeric" }); header.textContent = start.getMonth() === end.getMonth() ? startLabel : `${startLabel} – ${endLabel}`; };
         window.jumpToToday = function() { AppState.currentDate = new Date(); window.renderCalendar(); filterAndRenderEventList(); };
@@ -938,6 +945,7 @@ async function fetchUserCalendars() {
             document.getElementById('startTime').value = '08:00';
             updateDurationDisplay();
             setActiveColor('#4f46e5');
+            setActiveTextColor('#ffffff');
             
             showSidebarView('#eventModal'); // Replaced modal class logic
             clearAllHighlights();
@@ -976,6 +984,7 @@ async function fetchUserCalendars() {
 
             updateDurationDisplay();
             setActiveColor(event.color || '#4f46e5');
+            setActiveTextColor(event.textColor || '#ffffff');
             
             showSidebarView('#eventModal'); // Replaced modal class logic
             clearAllHighlights();
@@ -1019,6 +1028,7 @@ async function fetchUserCalendars() {
                 notes, 
                 name: document.getElementById('eventName').value.trim(), 
                 color: document.getElementById('eventColor').value, 
+                textColor: document.getElementById('eventTextColor').value,
                 includeWeekends: document.getElementById('includeWeekends').checked, 
                 msTeamsLink: document.getElementById('msTeamsLink').value, 
                 userId: existingEvent?.userId || AppState.userId, // Keep original creator
@@ -1047,6 +1057,7 @@ async function fetchUserCalendars() {
                 endDate: dateStr, 
                 startTime: '08:00', 
                 color: '#9ca3af', 
+                textColor: '#000000', 
                 includeWeekends: false, 
                 tags: [], 
                 notes:[], 
@@ -1155,7 +1166,7 @@ async function fetchUserCalendars() {
         
         window.importTemplates = function() { const input = document.createElement("input"); input.type = "file"; input.accept = ".json"; input.onchange = () => { const file = input.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = e => { try { const tpls = JSON.parse(e.target.result); if (!Array.isArray(tpls) || !tpls.every(t => t.name)) throw new Error('Invalid'); AppState.templates = tpls; localStorage.setItem("templates", JSON.stringify(tpls)); populateTemplateDropdown(); showMessage('Templates Imported', `${tpls.length} templates loaded.`, 'bg-green-600'); } catch (err) { showMessage('Import Error', 'Invalid JSON.', 'bg-red-500'); } }; reader.readAsText(file); }; input.click(); };
         function populateTemplateDropdown() { const select = document.getElementById("templateSelect"); if (!select) return; select.innerHTML = `<option value="">-- Apply Template --</option><option value="duplicate">Duplicate by ID...</option><option disabled>––––––––––</option>`; AppState.templates.forEach((tpl, idx) => { select.innerHTML += `<option value="${idx}">${tpl.name}</option>`; }); }
-        function applyTemplateAndRecalculate() { const select = document.getElementById('templateSelect'), value = select.value; if (value === 'duplicate') { document.getElementById('duplicateModal').classList.remove('closed'); select.value = ""; return; } const startVal = document.getElementById('startDate').value; if (value !== "" && startVal) { const tpl = AppState.templates[value]; if (!tpl) return; if (tpl.durationDays) { document.getElementById('endDate').value = formatLocalDate(addDays(parseLocalDate(startVal), tpl.durationDays, document.getElementById('includeWeekends').checked)); } document.getElementById('eventName').value = tpl.name || ''; setActiveColor(tpl.color || '#4f46e5'); } window.updateDurationDisplay(); select.value = ""; }
+        function applyTemplateAndRecalculate() { const select = document.getElementById('templateSelect'), value = select.value; if (value === 'duplicate') { document.getElementById('duplicateModal').classList.remove('closed'); select.value = ""; return; } const startVal = document.getElementById('startDate').value; if (value !== "" && startVal) { const tpl = AppState.templates[value]; if (!tpl) return; if (tpl.durationDays) { document.getElementById('endDate').value = formatLocalDate(addDays(parseLocalDate(startVal), tpl.durationDays, document.getElementById('includeWeekends').checked)); } document.getElementById('eventName').value = tpl.name || ''; setActiveColor(tpl.color || '#4f46e5'); setActiveTextColor(tpl.textColor || '#ffffff'); } window.updateDurationDisplay(); select.value = ""; }
         (function loadStoredTemplates() { const saved = localStorage.getItem("templates"); if (saved) { try { AppState.templates = JSON.parse(saved); populateTemplateDropdown(); } catch (err) {} } else { populateTemplateDropdown(); } })();
         
         let resizeMoveHandler = null, resizeEndHandler = null;
@@ -1195,7 +1206,28 @@ async function fetchUserCalendars() {
 
         function addTagToUI(tag) { if (!tag || document.querySelector(`.custom-tag[data-tag="${tag}"]`)) return; document.getElementById('customTagsContainer').innerHTML += `<span class="custom-tag bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-1 rounded-full inline-flex items-center" data-tag="${tag}">${tag}<button type="button" class="ml-1.5 text-blue-500 hover:text-blue-700" onclick="this.parentElement.remove()">&times;</button></span>`; }
         function setActiveColor(color) { document.getElementById('eventColor').value = color; document.querySelectorAll('.color-swatch').forEach(swatch => swatch.classList.toggle('selected', swatch.dataset.color === color)); const customSwatch = document.getElementById('custom-color-swatch'); const isPreset = PRESET_COLORS.includes(color); if (!isPreset) { customSwatch.style.backgroundColor = color; customSwatch.classList.add('selected'); } else { customSwatch.style.backgroundColor = ''; } }
-        
+        function setActiveTextColor(color) {
+            if (!color) color = '#ffffff';
+            document.getElementById('eventTextColor').value = color;
+
+            // Remove 'selected' from all swatches in this specific selector
+            document.querySelectorAll('#text-color-selector .color-swatch').forEach(swatch => {
+                swatch.classList.remove('selected');
+            });
+
+            const presetSwatch = document.querySelector(`#text-color-selector .color-swatch[data-color="${color}"]`);
+            const customSwatch = document.getElementById('custom-text-color-swatch');
+
+            if (presetSwatch) {
+                presetSwatch.classList.add('selected');
+                customSwatch.style.backgroundColor = ''; // Clear custom bg
+            } else {
+                // It's a custom color
+                customSwatch.style.backgroundColor = color;
+                customSwatch.classList.add('selected');
+            }
+        }
+
         // --- START: JAVASCRIPT MODIFICATION ---
         // Updated to use showSidebarView
         function openAgendaView(dateStr) {
@@ -1217,7 +1249,7 @@ async function fetchUserCalendars() {
                 group.forEach((event, index) => {
                     const [hour, minute] = (event.startTime || '08:00').split(':').map(Number);
                     const topPosition = (hour + (minute / 60)) * hourHeight;
-                    const textColor = getTextColorForBg(event.color);
+                    const textColor = event.textColor || getTextColorForBg(event.color);
                     
                     const eventBar = document.createElement('div');
                     eventBar.className = 'agenda-event-bar p-2 rounded-lg flex flex-col justify-center cursor-pointer';
@@ -1413,6 +1445,17 @@ async function fetchUserCalendars() {
             colorSelector.innerHTML += `<div class="relative w-7 h-7"><button type="button" id="custom-color-swatch" class="color-swatch w-full h-full border-dashed border-gray-400" title="Custom color"></button><input type="color" id="custom-color-input" class="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"></div>`;
             document.querySelectorAll('.color-swatch').forEach(swatch => swatch.addEventListener('click', e => setActiveColor(e.target.dataset.color)));
             document.getElementById('custom-color-input').addEventListener('input', e => setActiveColor(e.target.value));
+            const textColorSelector = document.getElementById('text-color-selector');
+            if (textColorSelector) {
+                // Black Swatch
+                textColorSelector.innerHTML += `<button type="button" class="color-swatch" data-color="#000000" style="background-color: #000000;" title="Black"></button>`;
+                // White Swatch (with a border to be visible)
+                textColorSelector.innerHTML += `<button type="button" class="color-swatch" data-color="#ffffff" style="background-color: #ffffff; border: 1px solid #9ca3af;" title="White"></button>`;
+                // Custom Swatch
+                textColorSelector.innerHTML += `<div class="relative w-7 h-7">
+                                                    <button type="button" id="custom-text-color-swatch" class="color-swatch w-full h-full border-dashed border-gray-400" title="Custom text color"></button>
+                                                    <input type="color" id="custom-text-color-input" class="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer" value="#ffffff">
+                                                </div>`;
 
             // MODIFIED: Add event listeners for new UI elements
             document.getElementById('calendarSelector').addEventListener('change', handleCalendarChange);
@@ -1428,6 +1471,15 @@ async function fetchUserCalendars() {
             durationDisplay.addEventListener('click', () => { durationDisplay.style.display = 'none'; durationInput.style.display = 'inline-block'; durationInput.value = parseInt(durationDisplay.textContent); durationInput.focus(); });
             durationInput.addEventListener('blur', () => { durationDisplay.style.display = 'inline-block'; durationInput.style.display = 'none'; });
             durationInput.addEventListener('change', () => { const startDate = document.getElementById('startDate').value; const duration = parseInt(durationInput.value); if(startDate && duration > 0) { document.getElementById('endDate').value = formatLocalDate(addDays(parseLocalDate(startDate), duration, document.getElementById('includeWeekends').checked)); updateDurationDisplay(); } });
+            textColorSelector.addEventListener('click', (e) => {
+                const swatch = e.target.closest('.color-swatch');
+                if (swatch && swatch.dataset.color) {
+                    setActiveTextColor(swatch.dataset.color);
+                }
+            });
+            document.getElementById('custom-text-color-input').addEventListener('input', (e) => {
+                setActiveTextColor(e.target.value);
+            });
 
             const notesHistorySelect = document.getElementById('notesHistorySelect'), notesHistoryView = document.getElementById('notesHistoryView');
             notesHistorySelect.addEventListener('change', (e) => { const event = AppState.events.find(ev => ev.id === document.getElementById('eventId').value); if (!event || !event.notes) return; const noteIndex = e.target.value; if (noteIndex === '') { notesHistoryView.classList.add('hidden'); } else { notesHistoryView.textContent = event.notes[noteIndex].content; notesHistoryView.classList.remove('hidden'); } });
@@ -1463,6 +1515,7 @@ async function fetchUserCalendars() {
                     document.getElementById('eventNotes').value = latestNote;
                     populateTagsForModal(source.tags);
                     setActiveColor(source.color);
+                    setActiveTextColor(source.textColor || '#ffffff');
                     showMessage('Success', 'Event details applied.', 'bg-green-600');
                     closeDuplicateModal();
                     document.getElementById('duplicateIdInputModal').value = '';
